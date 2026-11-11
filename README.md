@@ -1,6 +1,8 @@
 # RAKOTO Player
 
-Site vitrine de RAKOTO Player en TypeScript, avec une identité bleue et blanche et deux téléchargements Windows dès la première section : installation hors ligne et installation en ligne.
+Site vitrine de RAKOTO Player en TypeScript, avec une identité bleue et blanche. La première section propose les installations Windows hors ligne / en ligne et l'APK Android.
+
+L'application Android native est dans [`android/`](android/README.md) : Java et LibVLC 3.7.7, Android 6.0+ ARM 32/64 bits, version **1.0.0-beta.1**. Les limites de validation de cette première bêta sont documentées dans [`android/TESTS.md`](android/TESTS.md).
 
 ## Publier depuis ce dépôt avec GitHub Pages
 
@@ -30,12 +32,15 @@ L’aperçu local est servi sur `http://127.0.0.1:4173`. Modifier les sources de
 - `src/style.css` : identité visuelle et mise en page responsive.
 - `src/client.ts` : téléchargements, menu mobile et aperçu du mini-lecteur.
 - `assets/` : logo et illustrations RAKOTO.
-- `public/release.json` : version, tailles, empreintes SHA-256 et URL des installateurs.
+- `public/release.json` : versions, tailles, empreintes SHA-256 et URL des installateurs Windows et de l'APK Android.
+- `android/` : sources de l'application Android, Gradle Wrapper, notices et tests natifs.
 - `docs/` : site prêt à publier sur GitHub Pages.
 - `tests/` : contrôle des chemins et des téléchargements dans le client compilé.
 
 ## Téléchargements
 
 Les boutons utilisent les installateurs déjà hébergés sur `https://rakoto-player.exquisitecurl1.chatgpt.site`. Le manifeste local permet au site statique de fonctionner sans serveur applicatif ni clé secrète. Les deux installations fournissent la même application Windows ; l’assistant en ligne télécharge et vérifie le programme complet.
+
+L'APK Android complet est hébergé dans les **GitHub Releases** de ce dépôt. Son moteur est inclus pour lire les fichiers locaux hors ligne ; il n'a pas d'autorisation Internet. Cette première bêta ne comprend pas le tiroir audio flottant Windows ni son visualiseur. Le mode flottant vidéo utilise le PiP Android 8+ compatible, l'audio en arrière-plan se commande dans les notifications. L'APK est signé avec la clé de diffusion RAKOTO, conservée en privé et exclue du dépôt.
 
 Pour une nouvelle version, mettre à jour `public/release.json`, puis reconstruire le site. Les URL peuvent aussi pointer vers des fichiers publiés dans GitHub Releases. Les installateurs de la version actuelle sont des versions de développement non signées numériquement.

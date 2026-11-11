@@ -13,6 +13,14 @@ for(const type of ['offline','online']){
     new URL(item.url).protocol!=='https:'||!new URL(item.url).pathname.endsWith('/'+item.file))
     throw new Error('Métadonnées de téléchargement invalides : '+type);
 }
+if(manifest.android){
+  const item=manifest.android;
+  if(!/^\d+\.\d+\.\d+-beta\.\d+$/.test(item.version)||
+    item.file!==`RAKOTO-Player-Android-${item.version}.apk`||!Number.isSafeInteger(item.bytes)||item.bytes<1||
+    !/^[a-f0-9]{64}$/i.test(item.sha256)||new URL(item.url).protocol!=='https:'||
+    !new URL(item.url).pathname.endsWith('/'+item.file)||item.minAndroid!=='6.0'||
+    JSON.stringify(item.abis)!==JSON.stringify(['arm64-v8a','armeabi-v7a']))throw new Error('Métadonnées Android invalides.');
+}
 const downloadOrigin=new URL(manifest.offline.url).origin;
 let html=await readFile(path.join(root,'src/index.html'),'utf8');
 html=html.replaceAll('href="/downloads/','href="'+downloadOrigin+'/downloads/')

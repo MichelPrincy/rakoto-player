@@ -13,5 +13,17 @@
     "bytes": 230551,
     "sha256": "9610c5817d40cb12179027ad23c343021958765e0708a0ec58e6b951832f7208",
     "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-2.2.3-Online-x64.exe"
+  },
+  "android": {
+    "version": "1.0.0-beta.1",
+    "file": "RAKOTO-Player-Android-1.0.0-beta.1.apk",
+    "bytes": 44989707,
+    "sha256": "2938ca26f8e4ac21796af5a866a444fd7ea0076ffecec1d83252598d532093cc",
+    "url": "https://github.com/MichelPrincy/rakoto-player/releases/download/android-v1.0.0-beta.1/RAKOTO-Player-Android-1.0.0-beta.1.apk",
+    "minAndroid": "6.0",
+    "abis": [
+      "arm64-v8a",
+      "armeabi-v7a"
+    ]
   }
 }
