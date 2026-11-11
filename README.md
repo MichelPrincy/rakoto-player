@@ -2,7 +2,7 @@
 
 Site vitrine de RAKOTO Player en TypeScript, avec une identité bleue et blanche. La première section propose les installations Windows hors ligne / en ligne et l'APK Android.
 
-L'application Android native est dans [`android/`](android/README.md) : Java et LibVLC 3.7.7, Android 6.0+ ARM 32/64 bits, version **1.0.0-beta.1**. Les limites de validation de cette première bêta sont documentées dans [`android/TESTS.md`](android/TESTS.md).
+L'application Android native est dans [`android/`](android/README.md) : Java et LibVLC 3.7.7, Android 6.0+ ARM 32/64 bits, version **1.0.0-beta.2**. Quatre onglets : Audio, Vidéo, Coffre, Profil. Scan MediaStore et dossiers autorisés, playlists et favoris, navigation par dossiers, tri dans les deux sens et coffre chiffré avec code à quatre chiffres. Les originaux des vidéos importées dans le coffre sont conservés. Les tests du chiffrement et des tris sont passés ; les limites de validation Android sont documentées dans [`android/TESTS.md`](android/TESTS.md).
 
 ## Publier depuis ce dépôt avec GitHub Pages
 
