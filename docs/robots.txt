@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://michelprincy.github.io/rakoto-player/sitemap.xml
