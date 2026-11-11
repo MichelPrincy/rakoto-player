@@ -1,0 +1,31 @@
+RAKOTO PLAYER ANDROID — COMPOSANTS ET SOURCES
+
+Première version bêta : 1.0.0-beta.1.
+
+Moteur de lecture : LibVLC Android 3.7.7, VideoLAN et contributeurs.
+Le composant org.videolan.android:libvlc-all:3.7.7 est publié sous
+GNU Lesser General Public License version 2.1. Le texte de cette licence
+est fourni dans le fichier LGPL-2.1.txt des ressources de l’application.
+
+Sources et instructions de compilation du moteur :
+https://code.videolan.org/videolan/libvlcjni
+https://code.videolan.org/videolan/vlc
+https://repo.maven.apache.org/maven2/org/videolan/android/libvlc-all/3.7.7/
+
+Les sources Java exactes des bindings sont fournies dans le fichier
+libvlc-all-3.7.7-sources.jar du dépôt Maven ci-dessus. Les scripts du dépôt
+LibVLC JNI décrivent la construction des bibliothèques natives et de leurs
+dépendances. Les bibliothèques conservent leurs licences respectives.
+
+Vous pouvez modifier et remplacer les composants LGPL, reconstruire et
+signer votre propre APK. L’analyse et le débogage des modifications de ces
+composants restent autorisés dans le cadre de leur licence. Les clés de
+signature de RAKOTO ne font pas partie des sources distribuées.
+
+Dépendances Java du moteur : AndroidX (Apache-2.0), annotations AndroidX
+(Apache-2.0), Kotlin standard library (Apache-2.0).
+https://cs.android.com/androidx/platform/frameworks/support
+https://github.com/JetBrains/kotlin
+
+Le nom, le logo et les éléments propres à RAKOTO Player appartiennent
+à leur titulaire. Cette application est indépendante de l’application VLC.

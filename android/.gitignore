@@ -1,0 +1,7 @@
+.gradle/
+**/build/
+local.properties
+signing/
+.idea/
+*.iml
+app/src/androidTest/assets/fixtures/
