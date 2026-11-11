@@ -1,0 +1,17 @@
+{
+  "version": "2.2.3",
+  "publishedAt": "2026-11-11T10:31:56.748Z",
+  "platform": "Windows 10 / 11 x64",
+  "offline": {
+    "file": "RAKOTO-Player-2.2.3-Offline-x64.exe",
+    "bytes": 141648228,
+    "sha256": "548a1064fe54841971d9643d737be09934cb3487a57742255ed0018fcddb9ec2",
+    "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-2.2.3-Offline-x64.exe"
+  },
+  "online": {
+    "file": "RAKOTO-Player-2.2.3-Online-x64.exe",
+    "bytes": 230551,
+    "sha256": "9610c5817d40cb12179027ad23c343021958765e0708a0ec58e6b951832f7208",
+    "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-2.2.3-Online-x64.exe"
+  }
+}

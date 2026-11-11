@@ -1,0 +1,14 @@
+{
+  "name": "rakoto-player-website",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Site vitrine TypeScript de RAKOTO Player, prêt pour GitHub Pages",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "preview": "node scripts/preview.mjs"
+  },
+  "devDependencies": { "typescript": "5.9.3", "esbuild": "0.27.0" }
+}
