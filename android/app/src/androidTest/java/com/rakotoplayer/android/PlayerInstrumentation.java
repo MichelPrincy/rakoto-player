@@ -159,6 +159,12 @@ public final class PlayerInstrumentation extends Instrumentation {
     Bundle result = new Bundle();
     int code = Activity.RESULT_OK;
     try {
+      getTargetContext()
+          .getSharedPreferences("rakoto", android.content.Context.MODE_PRIVATE)
+          .edit()
+          .putBoolean("media_access_asked", true)
+          .putBoolean("notifications_asked", true)
+          .apply();
       Intent intent =
           new Intent(getTargetContext(), MainActivity.class)
               .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

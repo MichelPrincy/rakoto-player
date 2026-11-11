@@ -8,8 +8,8 @@ import org.json.JSONObject;
 
 public final class MediaEntry {
   public final String uri;
-  public String name, title, artist, mime;
-  public long size;
+  public String name, title, artist, mime, folder = "Fichiers ajoutés", source = "manual";
+  public long size, durationMs, addedAt = System.currentTimeMillis(), modifiedAt;
   public boolean video;
 
   public MediaEntry(String uri, String name) {
@@ -33,7 +33,7 @@ public final class MediaEntry {
                 null,
                 null)) {
       if (cursor != null && cursor.moveToFirst()) {
-        item.name = cursor.getString(0);
+        if (!cursor.isNull(0)) item.name = cursor.getString(0);
         item.title = item.name;
         if (!cursor.isNull(1)) item.size = cursor.getLong(1);
       }
@@ -45,6 +45,11 @@ public final class MediaEntry {
     } catch (Exception ignored) {
     }
     item.video = item.mime.startsWith("video/");
+    if (!item.video
+        && item.name
+            .toLowerCase(java.util.Locale.ROOT)
+            .matches(".*\\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpeg|mpg|ts|m2ts|3gp)$"))
+      item.video = true;
     return item;
   }
 
@@ -58,7 +63,12 @@ public final class MediaEntry {
           .put("artist", artist)
           .put("mime", mime)
           .put("size", size)
-          .put("video", video);
+          .put("video", video)
+          .put("folder", folder)
+          .put("source", source)
+          .put("duration", durationMs)
+          .put("added", addedAt)
+          .put("modified", modifiedAt);
     } catch (Exception ignored) {
     }
     return object;
@@ -72,6 +82,15 @@ public final class MediaEntry {
     item.mime = object.optString("mime");
     item.size = object.optLong("size");
     item.video = object.optBoolean("video");
+    item.folder = object.optString("folder", "Fichiers ajoutés");
+    item.source = object.optString("source", "manual");
+    item.durationMs = object.optLong("duration");
+    item.addedAt = object.optLong("added", System.currentTimeMillis());
+    item.modifiedAt = object.optLong("modified");
     return item;
+  }
+
+  public boolean isPrivate() {
+    return "vault".equals(source);
   }
 }

@@ -1,4 +1,4 @@
-# Validation de la bêta Android 1
+# Validation de la bêta Android 2
 
 ## Contrôles exécutés sur Windows
 
@@ -8,12 +8,22 @@
 - Inspection des ABI de diffusion : ARM64 et ARMv7, sans les bibliothèques x86 de l'émulateur.
 - Vérification des segments ELF ARM64 alignés à 16 Ko, notices LGPL présentes.
 - Vérification du manifeste : pas d'autorisation Internet, microphone ou accès général au stockage.
+- Tests hôte **exécutés et passés** sur le code `VaultFile` livré : chiffrement, relecture complète d'un fichier synthétique de plus de 8 Mo, seek inter-blocs, nonces distincts, mauvaise clé, fichier altéré, tronqué et blocs permutés.
+- Tests hôte **exécutés et passés** sur `Library.sort` : noms, taille supérieure à 4 Go, durées, dates, ordres inversés et durées inconnues en fin de liste.
+
+Les permissions de lecture des médias sont désormais déclarées pour le scan. Elles ne donnent pas un accès général aux dossiers protégés d'Android.
+
+Reproduire les tests hôte avec JDK 17 et `ANDROID_HOME` :
+
+```powershell
+.\tests\run-host.ps1
+```
 
 ## Limite de validation à cette date
 
 Aucun téléphone physique n'est connecté au poste. L'émulateur Android 11 a été installé et plusieurs démarrages sans interface ont été essayés, mais il reste hors ligne sur cette configuration Windows dépourvue d'accélération d'émulation opérationnelle. Aucun pilote système n'a été installé pour contourner cette limite.
 
-**Les tests de décodage et d'interaction ci-dessous sont compilés mais n'ont donc pas été exécutés avec succès.** La publication est une première bêta : la lecture et les transitions doivent encore être validées sur un appareil Android réel, notamment selon son décodage matériel et sa politique de batterie. Aucun test visuel ni aucune capture n'ont été effectués.
+**Les tests de décodage et d'interaction Android ci-dessous sont compilés mais n'ont pas été exécutés avec succès sur ce poste.** La lecture, les permissions complètes/partielles, le scan d'une vraie carte SD, les playlists, le Keystore, le proxy du coffre et son verrouillage doivent encore être validés sur un appareil Android réel. Aucun test visuel ni aucune capture n'ont été effectués.
 
 ## Suite native prête à exécuter
 

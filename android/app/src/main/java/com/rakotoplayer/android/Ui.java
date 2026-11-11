@@ -141,6 +141,32 @@ final class Ui {
           canvas.drawLine(5, 5, 19, 19, paint);
           canvas.drawLine(19, 5, 5, 19, paint);
           break;
+        case "plus":
+          canvas.drawLine(4, 12, 20, 12, paint);
+          canvas.drawLine(12, 4, 12, 20, paint);
+          break;
+        case "lock":
+          canvas.drawRoundRect(5, 10, 19, 21, 3, 3, paint);
+          p.moveTo(8, 10);
+          p.lineTo(8, 7);
+          p.cubicTo(8, 1, 16, 1, 16, 7);
+          p.lineTo(16, 10);
+          canvas.drawPath(p, paint);
+          canvas.drawLine(12, 14, 12, 17, paint);
+          break;
+        case "person":
+          canvas.drawCircle(12, 7, 4, paint);
+          p.moveTo(4, 21);
+          p.cubicTo(4, 12, 20, 12, 20, 21);
+          canvas.drawPath(p, paint);
+          break;
+        case "playlist":
+          canvas.drawLine(3, 5, 20, 5, paint);
+          canvas.drawLine(3, 11, 13, 11, paint);
+          canvas.drawLine(3, 17, 10, 17, paint);
+          canvas.drawLine(19, 11, 19, 19, paint);
+          canvas.drawOval(13, 17, 19, 22, paint);
+          break;
         case "folder":
           p.moveTo(3, 7);
           p.lineTo(3, 20);

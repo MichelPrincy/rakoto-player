@@ -179,9 +179,16 @@ public class PlaybackService extends Service {
             : new Notification.Builder(this);
     return builder
         .setSmallIcon(R.drawable.ic_notification)
-        .setContentTitle(current == null ? "RAKOTO Player" : current.title)
+        .setContentTitle(
+            current == null
+                ? "RAKOTO Player"
+                : current.isPrivate() ? "Coffre RAKOTO" : current.title)
         .setContentText(
-            loading ? "Chargement du média…" : current == null ? "Lecture locale" : current.artist)
+            current != null && current.isPrivate()
+                ? "Lecture privée"
+                : loading
+                    ? "Chargement du média…"
+                    : current == null ? "Lecture locale" : current.artist)
         .setContentIntent(open)
         .setVisibility(Notification.VISIBILITY_PUBLIC)
         .setOnlyAlertOnce(true)
@@ -218,8 +225,12 @@ public class PlaybackService extends Service {
     if (current != null)
       session.setMetadata(
           new MediaMetadata.Builder()
-              .putString(MediaMetadata.METADATA_KEY_TITLE, current.title)
-              .putString(MediaMetadata.METADATA_KEY_ARTIST, current.artist)
+              .putString(
+                  MediaMetadata.METADATA_KEY_TITLE,
+                  current.isPrivate() ? "Coffre RAKOTO" : current.title)
+              .putString(
+                  MediaMetadata.METADATA_KEY_ARTIST,
+                  current.isPrivate() ? "Lecture privée" : current.artist)
               .putLong(MediaMetadata.METADATA_KEY_DURATION, Math.max(0, player.getLength()))
               .build());
     long actions =
@@ -279,6 +290,14 @@ public class PlaybackService extends Service {
   }
 
   public void open(List<MediaEntry> items, int index) {
+    open(items, index, null);
+  }
+
+  public void openPrivate(MediaEntry entry, ParcelFileDescriptor descriptor) {
+    open(Collections.singletonList(entry), 0, descriptor);
+  }
+
+  private void open(List<MediaEntry> items, int index, ParcelFileDescriptor prepared) {
     if (index < 0 || index >= items.size()) return;
     savePosition();
     player.stop();
@@ -294,11 +313,17 @@ public class PlaybackService extends Service {
     session.setActive(true);
     notifyChanged();
     try {
-      Uri uri = Uri.parse(current.uri);
-      String scheme = uri.getScheme();
-      if (!"content".equals(scheme) && !"file".equals(scheme))
-        throw new IllegalArgumentException("URI locale requise");
-      descriptor = getContentResolver().openFileDescriptor(uri, "r");
+      if (current.isPrivate()) {
+        if (prepared == null)
+          throw new IllegalArgumentException("Déverrouillez le coffre pour lire cette vidéo");
+        descriptor = prepared;
+      } else {
+        Uri uri = Uri.parse(current.uri);
+        String scheme = uri.getScheme();
+        if (!"content".equals(scheme) && !"file".equals(scheme))
+          throw new IllegalArgumentException("URI locale requise");
+        descriptor = getContentResolver().openFileDescriptor(uri, "r");
+      }
       if (descriptor == null) throw new java.io.IOException("Fichier inaccessible");
       Media media = new Media(vlc, descriptor.getFileDescriptor());
       media.setHWDecoderEnabled(true, false);
@@ -316,6 +341,7 @@ public class PlaybackService extends Service {
         updateSession();
       }
     } catch (Exception failure) {
+      closeDescriptor();
       loading = false;
       error = "Accès au fichier impossible. Réimportez-le depuis le sélecteur Android.";
       stopForeground(true);
@@ -359,6 +385,10 @@ public class PlaybackService extends Service {
 
   public void next(int direction) {
     if (queue.isEmpty()) return;
+    if (current != null && current.isPrivate()) {
+      seek(0);
+      return;
+    }
     if (direction < 0 && player.getTime() > 3000) {
       seek(0);
       return;
@@ -387,6 +417,19 @@ public class PlaybackService extends Service {
     stopSelf();
   }
 
+  public void lockPrivate() {
+    if (current == null || !current.isPrivate()) return;
+    stop();
+    player.setMedia(null);
+    closeDescriptor();
+    current = null;
+    queue.clear();
+    queueIndex = -1;
+    hasVideo = false;
+    session.setMetadata(null);
+    notifyChanged();
+  }
+
   public void setVolume(int value) {
     volume = Math.max(0, Math.min(100, value));
     player.setVolume(volume);
@@ -410,6 +453,7 @@ public class PlaybackService extends Service {
         if (track != null && track.type == IMedia.Track.Type.Video) hasVideo = true;
       }
       current.video = hasVideo;
+      current.durationMs = Math.max(current.durationMs, player.getLength());
       library.update(current);
     } finally {
       media.release();
@@ -428,6 +472,13 @@ public class PlaybackService extends Service {
       notifyChanged();
     } else if (event.type == org.videolan.libvlc.MediaPlayer.Event.Paused) updateSession();
     else if (event.type == org.videolan.libvlc.MediaPlayer.Event.EndReached) {
+      if (current != null && current.isPrivate()) {
+        if (repeat == 1) {
+          player.stop();
+          player.play();
+        } else stop();
+        return;
+      }
       if (current != null) library.position(current.uri, 0);
       if (repeat == 1) open(queue, queueIndex);
       else if (queueIndex + 1 < queue.size() || repeat == 2 || shuffle) next(1);

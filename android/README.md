@@ -1,6 +1,6 @@
 # RAKOTO Player Android
 
-Première bêta Android **1.0.0-beta.1**, indépendante de l'application Electron Windows.
+Bêta Android **1.0.0-beta.2**, indépendante de l'application Electron Windows. Mise à jour avec la même signature et conservation des données de la première bêta.
 
 ## Plateforme et moteur
 
@@ -12,17 +12,28 @@ Première bêta Android **1.0.0-beta.1**, indépendante de l'application Electro
 
 ## Fonctionnalités
 
-Import de fichiers locaux par le sélecteur Android, bibliothèque persistante, recherche, filtres musique/vidéo, favoris et reprise de position. Le fichier est lu depuis son emplacement d'origine ; il n'est pas copié dans la bibliothèque.
+Quatre onglets flottants en bas : **Audio, Vidéo, Coffre, Profil**.
+
+- **Audio** : scan de toutes les entrées audio accessibles de MediaStore, y compris enregistrements, notifications et sonneries, sans filtre `IS_MUSIC`, de durée ou de taille. Mémoire partagée et volumes SD indexés ; ajout de dossiers par SAF pour les contenus non indexés. Recherche, playlists persistantes, favoris et reprise de lecture.
+- **Vidéo** : dossiers hiérarchiques comme dans un explorateur, vue de tous les fichiers, playlists et favoris. Tri par nom, taille, durée et date d'ajout, dans les deux sens. Les durées non détectées sont indiquées comme inconnues.
+- **Coffre** : création et confirmation d'un code à quatre chiffres, copies vidéo chiffrées, import, lecture avec navigation, tri, suppression de la copie privée et changement du code. Les fichiers d'origine restent à leur place et ne sont jamais supprimés automatiquement.
+- **Profil** : nom local, permissions, dossiers scannés et réglages du lecteur. Aucun compte en ligne.
+
+Le catalogue utilise SQLite et n'a plus le plafond de 2 000 fichiers. Les fichiers publics sont lus à leur emplacement d'origine. Les scans et traitements du coffre se font hors du thread de l'interface.
 
 Lecture native audio/vidéo : pistes et langues réellement détectées, changement de piste, sous-titres intégrés et externes SRT/ASS/SSA/VTT/SUB/IDX, volume, synchronisation, vitesse, égaliseur natif à dix bandes, répétition et lecture aléatoire. Pour VobSub, sélectionner ensemble les fichiers IDX et SUB de même nom. La compatibilité effective dépend du codec, du fichier et du téléphone.
 
 Plein écran immersif, double toucher pour basculer, commandes masquées après trois secondes et maintenues pendant les interactions. Vidéo Picture-in-Picture sur Android 8+ lorsque l'appareil le permet. Audio en arrière-plan avec MediaSession, commandes de notification, gestion du focus audio et pause lors du débranchement d'un casque.
 
-Le tiroir audio flottant Windows, son visualiseur et ses déformations élastiques ne sont pas inclus dans cette première bêta. Le mini-lecteur audio Android reste dans l'application ; en dehors, les commandes sont celles de la notification. Aucun faux signal audio n'est animé.
+Le tiroir audio flottant Windows, son visualiseur et ses déformations élastiques ne sont pas inclus. Le mini-lecteur audio Android reste dans l'application ; en dehors, les commandes sont celles de la notification. Aucun faux signal audio n'est animé.
 
 ## Confidentialité
 
-Pas d'autorisation Internet, microphone ou accès général au stockage. Le sélecteur SAF donne accès uniquement aux fichiers choisis. Bibliothèque, favoris et positions sont conservés dans les préférences privées de l'application. Les sous-titres externes sont copiés dans son cache pour permettre leur ouverture par LibVLC. La désinstallation efface ces données privées et conserve les fichiers médias d'origine.
+Pas d'autorisation Internet, microphone ou `MANAGE_EXTERNAL_STORAGE`. Le scan demande `READ_MEDIA_AUDIO` / `READ_MEDIA_VIDEO` sur Android 13+, ou `READ_EXTERNAL_STORAGE` jusqu'à Android 12. Android 14+ peut limiter l'accès aux seules vidéos sélectionnées ; ce statut est affiché dans Profil. Les dossiers privés d'autres applications ne sont pas contournés. Le sélecteur SAF donne accès aux dossiers ou fichiers choisis.
+
+Le coffre utilise AES-256-GCM par blocs authentifiés de 256 Ko. Sa clé est enveloppée avec une clé dérivée du code par PBKDF2 et une clé Android Keystore non exportable. Noms et métadonnées du catalogue sont également chiffrés. Les essais sont limités avec temporisation persistante après cinq échecs. Le coffre se verrouille en arrière-plan et ferme la lecture privée ; les notifications ne révèlent pas les noms des vidéos. Voir [COFFRE.md](COFFRE.md).
+
+Les sauvegardes et transferts automatiques des données privées sont désactivés. La désinstallation efface le coffre ; conserver les originaux. Les sous-titres externes du lecteur public utilisent le cache privé de l'application.
 
 ## Construire
 
@@ -47,6 +58,9 @@ Sur le poste d'origine, `tools/build-android.ps1` conserve la clé dans `android
 - `PlaybackService.java` : unique instance LibVLC, décodage, pistes, égaliseur, audio focus, MediaSession et service de lecture.
 - `MainActivity.java` : bibliothèque, surface vidéo, commandes, plein écran et PiP ; connexion au service par Binder privé.
 - `MediaEntry.java` / `Library.java` : métadonnées des URI et persistance locale.
+- `BrowserScreen.java` : quatre onglets, dossiers, tri, favoris, playlists et profil.
+- `MediaScanner.java` : MediaStore et parcours des dossiers autorisés via SAF.
+- `Vault.java` / `VaultFile.java` / `VaultProxy.java` : code, clés, copies chiffrées et lecture privée avec seek.
 - `Ui.java` : composants, icônes et illustration vectorielle légers.
 - `app/src/androidTest/.../PlayerInstrumentation.java` : essais fonctionnels natifs sans capture d'écran.
 

@@ -23,12 +23,19 @@ import org.videolan.libvlc.interfaces.IMedia;
 import org.videolan.libvlc.util.VLCVideoLayout;
 
 public class MainActivity extends Activity {
-  private static final int OPEN_MEDIA = 101, OPEN_SUBTITLE = 102;
+  private static final int OPEN_MEDIA = 101,
+      OPEN_SUBTITLE = 102,
+      OPEN_FOLDER = 104,
+      OPEN_VAULT = 105,
+      READ_MEDIA = 106;
   private PlaybackService service;
   private Library library;
   private boolean bound, visible, playerVisible, fullscreen, menuOpen, seeking, attached, pip;
-  private int selectedVideo = -1, filter = 0;
-  private String query = "", artUri = "", lastError = "";
+  private int selectedVideo = -1;
+  private BrowserScreen browser;
+  private final Set<AlertDialog> privateDialogs = new HashSet<>();
+  private boolean externalPicker;
+  private String artUri = "", lastError = "";
   private final Handler handler = new Handler(Looper.getMainLooper());
   private final ExecutorService artworkWorker = Executors.newSingleThreadExecutor();
   private final PlaybackService.Listener listener = this::refresh;
@@ -48,23 +55,12 @@ public class MainActivity extends Activity {
         }
       };
   private LinearLayout root, libraryPage, drawer, controls, playerToolbar, audioContent;
-  private FrameLayout libraryLandscape;
   private FrameLayout content, playerPage, audioPlaceholder;
   private VLCVideoLayout video;
   private ImageView album, drawerArt;
-  private TextView trackTitle,
-      artist,
-      drawerTitle,
-      drawerArtist,
-      time,
-      duration,
-      trackSelection,
-      empty;
+  private TextView trackTitle, artist, drawerTitle, drawerArtist, time, duration, trackSelection;
   private ImageButton play, miniPlay;
   private SeekBar timeline, drawerProgress;
-  private ListView list;
-  private List<MediaEntry> displayed = new ArrayList<>();
-  private MediaAdapter adapter;
   private Intent pendingIntent;
   private int insetLeft, insetTop, insetRight, insetBottom;
   private final ServiceConnection connection =
@@ -186,120 +182,68 @@ public class MainActivity extends Activity {
     buildLibrary();
     buildPlayer();
     buildDrawer();
+    LinearLayout.LayoutParams navParams = lp(-1, 62);
+    navParams.setMargins(dp(12), dp(2), dp(12), dp(10));
+    root.addView(browser.navigation(), navParams);
     root.requestApplyInsets();
     reloadLibrary();
   }
 
   private void buildLibrary() {
-    libraryPage = column();
-    libraryPage.setPadding(dp(18), 0, dp(18), 0);
-    content.addView(libraryPage, new FrameLayout.LayoutParams(-1, -1));
-    LinearLayout header = row();
-    header.setPadding(0, dp(10), 0, dp(10));
-    ImageView logo = new ImageView(this);
-    logo.setImageResource(R.drawable.rakoto_logo);
-    logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-    header.addView(logo, lp(63, 43));
-    space(header, 9);
-    TextView brand = text("RAKOTO\nPLAYER", 17, Ui.NAVY);
-    brand.setTypeface(null, Typeface.BOLD);
-    brand.setLineSpacing(0, .9f);
-    header.addView(brand, new LinearLayout.LayoutParams(0, dp(48), 1));
-    ImageButton settings = Ui.icon(this, "more", "Paramètres et informations", false);
-    header.addView(settings, lp(48, 48));
-    click(settings, this::settings);
-    libraryPage.addView(header, lp(-1, 72));
-    FrameLayout landscape = new FrameLayout(this);
-    libraryLandscape = landscape;
-    landscape.setClipToOutline(true);
-    landscape.setBackground(Ui.background(Ui.SOFT, 20, this));
-    landscape.addView(new Ui.Landscape(this), new FrameLayout.LayoutParams(-1, -1));
-    LinearLayout intro = column();
-    intro.setPadding(dp(18), dp(17), dp(18), 0);
-    TextView heading = text("Votre musique.\nVotre liberté.", 24, Ui.NAVY);
-    heading.setTypeface(null, Typeface.BOLD);
-    intro.addView(heading);
-    TextView subtitle = text("Vos fichiers, sur votre téléphone.", 12, Ui.NAVY);
-    subtitle.setPadding(0, dp(8), 0, 0);
-    intro.addView(subtitle);
-    landscape.addView(intro, new FrameLayout.LayoutParams(-1, -1));
-    libraryPage.addView(landscape, lp(-1, 132));
-    LinearLayout actions = row();
-    actions.setPadding(0, dp(14), 0, dp(10));
-    TextView title = text("Votre bibliothèque", 19, Ui.INK);
-    title.setTypeface(null, Typeface.BOLD);
-    actions.addView(title, new LinearLayout.LayoutParams(0, dp(46), 1));
-    title.setGravity(Gravity.CENTER_VERTICAL);
-    Button add = Ui.button(this, "Importer", true);
-    actions.addView(add, lp(-2, 46));
-    click(add, this::pickMedia);
-    libraryPage.addView(actions);
-    EditText search = new EditText(this);
-    search.setSingleLine();
-    search.setTextSize(14);
-    search.setHint("Rechercher un titre ou un artiste");
-    search.setPadding(dp(13), 0, dp(13), 0);
-    search.setBackground(Ui.background(Color.WHITE, 14, this));
-    search.setTextColor(Ui.INK);
-    libraryPage.addView(search, lp(-1, 48));
-    search.addTextChangedListener(
-        new TextWatcher() {
-          public void beforeTextChanged(CharSequence s, int st, int count, int after) {}
+    browser =
+        new BrowserScreen(
+            this,
+            library,
+            new BrowserScreen.Actions() {
+              public void play(List<MediaEntry> entries, int index) {
+                playEntries(entries, index);
+              }
 
-          public void onTextChanged(CharSequence s, int st, int before, int count) {
-            query = s.toString();
-            reloadLibrary();
-          }
+              public void pickMedia(boolean vault) {
+                pickFiles(vault);
+              }
 
-          public void afterTextChanged(Editable e) {}
-        });
-    LinearLayout tabs = row();
-    tabs.setPadding(0, dp(9), 0, dp(7));
-    String[] names = {"Tout", "Musique", "Vidéos", "Favoris"};
-    for (int i = 0; i < names.length; i++) {
-      final int selected = i;
-      Button tab = Ui.button(this, names[i], false);
-      LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(43), 1);
-      params.setMargins(0, 0, dp(i < 3 ? 5 : 0), 0);
-      tabs.addView(tab, params);
-      click(
-          tab,
-          () -> {
-            filter = selected;
-            for (int n = 0; n < tabs.getChildCount(); n++) {
-              View child = tabs.getChildAt(n);
-              child.setBackground(Ui.background(n == selected ? 0xffd7e9ff : Ui.SOFT, 14, this));
-            }
-            reloadLibrary();
-          });
-    }
-    libraryPage.addView(tabs);
-    FrameLayout listHolder = new FrameLayout(this);
-    libraryPage.addView(listHolder, new LinearLayout.LayoutParams(-1, 0, 1));
-    list = new ListView(this);
-    list.setDivider(null);
-    list.setCacheColorHint(Color.TRANSPARENT);
-    adapter = new MediaAdapter();
-    list.setAdapter(adapter);
-    listHolder.addView(list, new FrameLayout.LayoutParams(-1, -1));
-    empty =
-        text(
-            "Votre univers commence ici.\n\n"
-                + "Importez vos musiques et vidéos.\n"
-                + "Les fichiers restent à leur emplacement.",
-            15,
-            Ui.MUTED);
-    empty.setGravity(Gravity.CENTER);
-    empty.setPadding(dp(20), dp(18), dp(20), dp(18));
-    listHolder.addView(empty, new FrameLayout.LayoutParams(-1, -1));
-    list.setEmptyView(empty);
-    list.setOnItemClickListener(
-        (parent, view, position, id) -> playEntries(new ArrayList<>(displayed), position));
-    list.setOnItemLongClickListener(
-        (parent, view, position, id) -> {
-          mediaActions(displayed.get(position));
-          return true;
-        });
+              public void pickFolder() {
+                MainActivity.this.pickFolder();
+              }
+
+              public void requestScan() {
+                MainActivity.this.requestMediaAccess();
+              }
+
+              public void settings() {
+                MainActivity.this.settings();
+              }
+
+              public void openPrivate(MediaEntry entry, ParcelFileDescriptor descriptor) {
+                playPrivate(entry, descriptor);
+              }
+
+              public void locked() {
+                for (AlertDialog dialog : new ArrayList<>(privateDialogs)) dialog.dismiss();
+                if (service != null && service.current != null && service.current.isPrivate()) {
+                  service.lockPrivate();
+                  trackTitle.setText("RAKOTO Player");
+                  artist.setText("Vos médias locaux");
+                  drawerTitle.setText("RAKOTO Player");
+                  drawerArtist.setText("");
+                  if (playerVisible) showLibrary();
+                }
+              }
+
+              public void secure(boolean enabled) {
+                setPrivateWindow(enabled);
+              }
+
+              public void systemSettings() {
+                startActivity(
+                    new Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + getPackageName())));
+              }
+            });
+    libraryPage = browser;
+    content.addView(browser, new FrameLayout.LayoutParams(-1, -1));
   }
 
   private void buildPlayer() {
@@ -514,84 +458,81 @@ public class MainActivity extends Activity {
   }
 
   private void reloadLibrary() {
-    displayed = new ArrayList<>();
-    if (library == null) return;
-    String term = query.toLowerCase(Locale.ROOT);
-    for (MediaEntry entry : library.entries()) {
-      if (filter == 1 && entry.video
-          || filter == 2 && !entry.video
-          || filter == 3 && !library.favorite(entry.uri)) continue;
-      if (!term.isEmpty()
-          && !(entry.title + " " + entry.artist + " " + entry.name)
-              .toLowerCase(Locale.ROOT)
-              .contains(term)) continue;
-      displayed.add(entry);
-    }
-    if (adapter != null) adapter.notifyDataSetChanged();
+    if (browser != null) browser.reload();
   }
 
-  private class MediaAdapter extends BaseAdapter {
-    public int getCount() {
-      return displayed.size();
-    }
-
-    public Object getItem(int position) {
-      return displayed.get(position);
-    }
-
-    public long getItemId(int position) {
-      return position;
-    }
-
-    public View getView(int position, View recycled, android.view.ViewGroup parent) {
-      LinearLayout row;
-      ImageView icon;
-      TextView title, subtitle;
-      if (recycled == null) {
-        row = MainActivity.this.row();
-        row.setPadding(dp(7), dp(8), dp(7), dp(8));
-        icon = new ImageView(MainActivity.this);
-        icon.setPadding(dp(10), dp(10), dp(10), dp(10));
-        icon.setBackground(Ui.background(Ui.SOFT, 13, MainActivity.this));
-        row.addView(icon, lp(48, 48));
-        space(row, 12);
-        LinearLayout labels = column();
-        title = text("", 14, Ui.INK);
-        title.setSingleLine();
-        title.setEllipsize(TextUtils.TruncateAt.END);
-        subtitle = text("", 11, Ui.MUTED);
-        subtitle.setPadding(0, dp(5), 0, 0);
-        subtitle.setSingleLine();
-        subtitle.setEllipsize(TextUtils.TruncateAt.END);
-        labels.addView(title);
-        labels.addView(subtitle);
-        row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
-        row.setTag(new View[] {icon, title, subtitle});
-      } else {
-        row = (LinearLayout) recycled;
-        View[] values = (View[]) row.getTag();
-        icon = (ImageView) values[0];
-        title = (TextView) values[1];
-        subtitle = (TextView) values[2];
-      }
-      MediaEntry entry = displayed.get(position);
-      icon.setImageDrawable(new Ui.Glyph(entry.video ? "video" : "music", Ui.BLUE));
-      title.setText((library.favorite(entry.uri) ? "♥ " : "") + entry.title);
-      subtitle.setText(entry.artist + " · " + (entry.video ? "Vidéo" : "Audio / média"));
-      return row;
-    }
-  }
-
-  private void pickMedia() {
+  private void pickFiles(boolean vault) {
+    externalPicker = true;
     Intent intent =
         new Intent(Intent.ACTION_OPEN_DOCUMENT)
             .setType("*/*")
             .addCategory(Intent.CATEGORY_OPENABLE)
             .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-    startActivityForResult(intent, OPEN_MEDIA);
+    startActivityForResult(intent, vault ? OPEN_VAULT : OPEN_MEDIA);
+  }
+
+  private void pickFolder() {
+    externalPicker = true;
+    startActivityForResult(
+        new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            .addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION),
+        OPEN_FOLDER);
+  }
+
+  private void requestMediaAccess() {
+    List<String> permissions = new ArrayList<>();
+    if (Build.VERSION.SDK_INT >= 33) {
+      permissions.add(Manifest.permission.READ_MEDIA_AUDIO);
+      permissions.add(Manifest.permission.READ_MEDIA_VIDEO);
+      if (Build.VERSION.SDK_INT >= 34)
+        permissions.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED);
+    } else permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+    library.preferences.edit().putBoolean("media_access_asked", true).apply();
+    boolean complete = true;
+    for (String permission : permissions)
+      if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) complete = false;
+    if (complete) {
+      browser.scan();
+      return;
+    }
+    requestPermissions(permissions.toArray(new String[0]), READ_MEDIA);
+  }
+
+  @Override
+  public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+    super.onRequestPermissionsResult(request, permissions, results);
+    if (request == READ_MEDIA) {
+      browser.scan();
+      browser.reload();
+    }
+  }
+
+  private void setPrivateWindow(boolean enabled) {
+    if (enabled || service != null && service.current != null && service.current.isPrivate())
+      getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+    else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+  }
+
+  private void playPrivate(MediaEntry entry, ParcelFileDescriptor descriptor) {
+    if (service == null || !visible) {
+      try {
+        descriptor.close();
+      } catch (IOException ignored) {
+      }
+      return;
+    }
+    Intent foreground = new Intent(this, PlaybackService.class).setAction(PlaybackService.PLAY);
+    if (Build.VERSION.SDK_INT >= 26) startForegroundService(foreground);
+    else startService(foreground);
+    setPrivateWindow(true);
+    showPlayer();
+    service.openPrivate(entry, descriptor);
   }
 
   private void pickSubtitle() {
+    externalPicker = true;
     Intent intent =
         new Intent(Intent.ACTION_OPEN_DOCUMENT)
             .setType("*/*")
@@ -603,27 +544,29 @@ public class MainActivity extends Activity {
   @Override
   protected void onActivityResult(int request, int result, Intent data) {
     super.onActivityResult(request, result, data);
+    externalPicker = false;
     if (result != RESULT_OK || data == null) return;
     List<Uri> values = new ArrayList<>();
     if (data.getClipData() != null) {
       for (int i = 0; i < data.getClipData().getItemCount(); i++)
         values.add(data.getClipData().getItemAt(i).getUri());
     } else if (data.getData() != null) values.add(data.getData());
-    if (request == OPEN_MEDIA) {
-      List<MediaEntry> imported = new ArrayList<>();
-      for (Uri uri : values) {
+    if (request == OPEN_MEDIA || request == OPEN_FOLDER)
+      for (Uri uri : values)
         try {
           if ((data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0)
             getContentResolver()
                 .takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
         } catch (Exception ignored) {
         }
-        imported.add(MediaEntry.read(this, uri));
+    if (request == OPEN_FOLDER) {
+      if (!values.isEmpty()) {
+        library.addFolder(values.get(0).toString());
+        browser.scan();
       }
-      library.addAll(imported);
-      reloadLibrary();
-      if (!imported.isEmpty()) playEntries(imported, 0);
-    } else if (request == OPEN_SUBTITLE) loadSubtitles(values);
+    } else if (request == OPEN_MEDIA || request == OPEN_VAULT)
+      browser.imported(values, request == OPEN_VAULT);
+    else if (request == OPEN_SUBTITLE) loadSubtitles(values);
   }
 
   void playEntries(List<MediaEntry> entries, int index) {
@@ -645,42 +588,9 @@ public class MainActivity extends Activity {
     }
   }
 
-  private void mediaActions(MediaEntry entry) {
-    new AlertDialog.Builder(this)
-        .setTitle(entry.title)
-        .setItems(
-            new String[] {
-              library.favorite(entry.uri) ? "Retirer des favoris" : "Ajouter aux favoris",
-              "Informations du fichier",
-              "Retirer de la bibliothèque"
-            },
-            (dialog, which) -> {
-              if (which == 0) {
-                library.toggleFavorite(entry.uri);
-                reloadLibrary();
-              } else if (which == 1)
-                new AlertDialog.Builder(this)
-                    .setTitle("Fichier local")
-                    .setMessage(
-                        entry.name
-                            + "\n"
-                            + (entry.size > 0
-                                ? String.format(Locale.FRANCE, "%.2f Mo", entry.size / 1000000.0)
-                                : "Taille non renseignée")
-                            + "\n"
-                            + entry.mime)
-                    .setPositiveButton("Fermer", null)
-                    .show();
-              else {
-                library.remove(entry.uri);
-                reloadLibrary();
-              }
-            })
-        .show();
-  }
-
   private void showPlayer() {
     playerVisible = true;
+    browser.navigation().setVisibility(View.GONE);
     libraryPage.setVisibility(View.GONE);
     playerPage.setVisibility(View.VISIBLE);
     drawer.setVisibility(View.GONE);
@@ -693,6 +603,7 @@ public class MainActivity extends Activity {
     fullscreen(false);
     detachVideo();
     playerVisible = false;
+    browser.navigation().setVisibility(View.VISIBLE);
     libraryPage.setVisibility(View.VISIBLE);
     playerPage.setVisibility(View.GONE);
     reloadLibrary();
@@ -900,7 +811,12 @@ public class MainActivity extends Activity {
       "Arrêter"
     };
     for (int i = 0; i < labels.length; i++) popup.getMenu().add(0, i, i, labels[i]);
-    if (service.hasVideo
+    if (service.current != null && service.current.isPrivate()) {
+      popup.getMenu().findItem(6).setVisible(false);
+      popup.getMenu().findItem(8).setVisible(false);
+    }
+    if ((service.current == null || !service.current.isPrivate())
+        && service.hasVideo
         && Build.VERSION.SDK_INT >= 26
         && getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE))
       popup.getMenu().add(0, 10, 10, "Vidéo flottante (Picture-in-Picture)");
@@ -961,10 +877,15 @@ public class MainActivity extends Activity {
   }
 
   private void hold(AlertDialog dialog) {
+    if (service != null && service.current != null && service.current.isPrivate()) {
+      privateDialogs.add(dialog);
+      dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+    }
     menuOpen = true;
     handler.removeCallbacks(hideControls);
     dialog.setOnDismissListener(
         d -> {
+          privateDialogs.remove(dialog);
           menuOpen = false;
           showControls();
         });
@@ -1239,7 +1160,7 @@ public class MainActivity extends Activity {
     TextView about =
         text(
             "RAKOTO Player Android\n"
-                + "Version 1.0.0 bêta 1\n\n"
+                + "Version 1.0.0 bêta 2\n\n"
                 + "Lecture locale avec LibVLC 3.7.7 (VideoLAN). Aucun catalogue ou compte n’est"
                 + " nécessaire.\n\n"
                 + "La fenêtre flottante vidéo utilise le Picture-in-Picture Android. Le son en"
@@ -1285,6 +1206,12 @@ public class MainActivity extends Activity {
   }
 
   private void loadArtwork(MediaEntry entry) {
+    if (entry.isPrivate()) {
+      artUri = "";
+      album.setImageResource(R.drawable.rakoto_logo);
+      drawerArt.setImageResource(R.drawable.rakoto_logo);
+      return;
+    }
     if (entry.uri.equals(artUri)) return;
     artUri = entry.uri;
     album.setImageResource(R.drawable.rakoto_logo);
@@ -1425,6 +1352,10 @@ public class MainActivity extends Activity {
   }
 
   private void enterPip() {
+    if (service != null && service.current != null && service.current.isPrivate()) {
+      toast("Le coffre se verrouille quand vous quittez l’application.");
+      return;
+    }
     if (Build.VERSION.SDK_INT < 26
         || service == null
         || !service.hasVideo
@@ -1460,7 +1391,8 @@ public class MainActivity extends Activity {
     if (video.getGlobalVisibleRect(bounds)) builder.setSourceRectHint(bounds);
     if (Build.VERSION.SDK_INT >= 31)
       builder.setAutoEnterEnabled(
-          playerVisible
+          (service.current == null || !service.current.isPrivate())
+              && playerVisible
               && service.hasVideo
               && playing
               && library.preferences.getBoolean("auto_pip", false));
@@ -1509,7 +1441,6 @@ public class MainActivity extends Activity {
   private void adaptLayout() {
     boolean landscape =
         getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-    libraryLandscape.setVisibility(landscape ? View.GONE : View.VISIBLE);
     audioContent.setGravity(landscape ? Gravity.TOP | Gravity.CENTER_HORIZONTAL : Gravity.CENTER);
     audioContent.setPadding(dp(28), dp(landscape ? 68 : 65), dp(28), dp(landscape ? 150 : 220));
     album.setVisibility(landscape ? View.GONE : View.VISIBLE);
@@ -1531,7 +1462,7 @@ public class MainActivity extends Activity {
   private void navigateBack() {
     if (fullscreen) fullscreen(false);
     else if (playerVisible) showLibrary();
-    else finish();
+    else if (!browser.back()) finish();
   }
 
   // API 33+ uses the native OnBackInvokedCallback registered in onCreate.
@@ -1572,6 +1503,13 @@ public class MainActivity extends Activity {
   protected void onStart() {
     super.onStart();
     visible = true;
+    browser.resume();
+    if (!library.preferences.getBoolean("media_access_asked", false))
+      handler.postDelayed(
+          () -> {
+            if (visible && !isFinishing()) requestMediaAccess();
+          },
+          500);
     if (service != null) {
       service.listen(listener);
       if (playerVisible) attachVideo();
@@ -1584,6 +1522,7 @@ public class MainActivity extends Activity {
   @Override
   protected void onStop() {
     visible = false;
+    browser.pause(externalPicker);
     video.setKeepScreenOn(false);
     handler.removeCallbacks(tick);
     handler.removeCallbacks(hideControls);
@@ -1601,6 +1540,7 @@ public class MainActivity extends Activity {
   protected void onDestroy() {
     handler.removeCallbacksAndMessages(null);
     artworkWorker.shutdownNow();
+    browser.destroy();
     if (service != null) {
       service.unlisten(listener);
       detachVideo();
