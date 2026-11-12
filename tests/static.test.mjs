@@ -53,3 +53,26 @@ test('une URL Android invalide reste désactivée sans bloquer Windows',async()=
  assert.equal(nodes.get('[data-download="offline"]')[0].href,manifest.offline.url);
  assert.equal(nodes.get('[data-download="online"]')[0].href,manifest.online.url);
 });
+
+async function variantHarness(hints){
+ const info=structuredClone(manifest);
+ info.android.variants=['arm64-v8a','armeabi-v7a'].map((abi,index)=>{const file=`RAKOTO-Player-Android-${info.android.version}-${abi}.apk`;return {abi,file,bytes:20000000+index,sha256:'a'.repeat(64),url:'https://downloads.example/'+file,fallbackUrl:'https://backup.example/'+file}});
+ const events=new Map();const select={value:'auto',disabled:true,addEventListener(name,handler){events.set(name,handler)}};
+ const link={href:'',removeAttribute(){},setAttribute(){}};
+ const context=vm.createContext({URL,Intl,navigator:hints?{userAgentData:{getHighEntropyValues:async()=>hints}}:{},document:{querySelectorAll:selector=>selector==='[data-download="android"]'?[link]:[],querySelector:selector=>selector==='[data-android-variant]'?select:null},fetch:async()=>({ok:true,json:async()=>info})});
+ vm.runInContext(await readFile(path.join(root,'docs/app.js'),'utf8'),context);await new Promise(resolve=>setImmediate(resolve));
+ return {info,link,select,change:()=>events.get('change')()};
+}
+
+test('architecture inconnue : universel ; choix manuel : APK allégé correspondant',async()=>{
+ const h=await variantHarness();assert.equal(h.link.href,h.info.android.url);
+ h.select.value='arm64-v8a';h.change();assert.equal(h.link.href,h.info.android.variants[0].url);
+ h.select.value='armeabi-v7a';h.change();assert.equal(h.link.href,h.info.android.variants[1].url);
+ h.select.value='universal';h.change();assert.equal(h.link.href,h.info.android.url);
+});
+
+test('détection Android ARM explicite uniquement, sans deviner depuis un navigateur x86',async()=>{
+ const arm=await variantHarness({platform:'Android',architecture:'arm',bitness:'64'});assert.equal(arm.link.href,arm.info.android.variants[0].url);
+ const x86=await variantHarness({platform:'Android',architecture:'x86',bitness:'64'});assert.equal(x86.link.href,x86.info.android.url);
+ const missing=await variantHarness({platform:'Android',architecture:'arm'});assert.equal(missing.link.href,missing.info.android.url);
+});

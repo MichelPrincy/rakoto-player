@@ -21,6 +21,10 @@ if(manifest.android){
     !new URL(item.url).pathname.endsWith('/'+item.file)||item.minAndroid!=='6.0'||
     JSON.stringify(item.abis)!==JSON.stringify(['arm64-v8a','armeabi-v7a']))throw new Error('Métadonnées Android invalides.');
   if(item.fallbackUrl&&(new URL(item.fallbackUrl).protocol!=='https:'||!new URL(item.fallbackUrl).pathname.endsWith('/'+item.file)))throw new Error('Lien Android de secours invalide.');
+  for(const variant of item.variants||[]){
+    if(!['arm64-v8a','armeabi-v7a'].includes(variant.abi)||variant.file!==`RAKOTO-Player-Android-${item.version}-${variant.abi}.apk`||!Number.isSafeInteger(variant.bytes)||variant.bytes<1||!/^[a-f0-9]{64}$/i.test(variant.sha256)||new URL(variant.url).protocol!=='https:'||!new URL(variant.url).pathname.endsWith('/'+variant.file))throw new Error('Variante Android invalide.');
+    if(variant.fallbackUrl&&(new URL(variant.fallbackUrl).protocol!=='https:'||!new URL(variant.fallbackUrl).pathname.endsWith('/'+variant.file)))throw new Error('Secours Android invalide.');
+  }
 }
 const downloadOrigin=new URL(manifest.offline.url).origin;
 let html=await readFile(path.join(root,'src/index.html'),'utf8');
