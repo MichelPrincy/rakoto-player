@@ -91,6 +91,32 @@ final class Ui {
       paint.setStyle(Paint.Style.STROKE);
       Path p = new Path();
       switch (kind) {
+        case "volume":
+          p.moveTo(3, 9);
+          p.lineTo(7, 9);
+          p.lineTo(12, 5);
+          p.lineTo(12, 19);
+          p.lineTo(7, 15);
+          p.lineTo(3, 15);
+          p.close();
+          canvas.drawPath(p, paint);
+          canvas.drawArc(9, 5, 22, 19, -60, 120, false, paint);
+          break;
+        case "cc":
+          canvas.drawRoundRect(2, 5, 22, 19, 2, 2, paint);
+          canvas.drawArc(5, 9, 11, 15, 65, 230, false, paint);
+          canvas.drawArc(13, 9, 19, 15, 65, 230, false, paint);
+          break;
+        case "photo":
+          canvas.drawRoundRect(2, 3, 22, 21, 3, 3, paint);
+          canvas.drawCircle(8, 8, 2, paint);
+          p.moveTo(3, 18);
+          p.lineTo(10, 12);
+          p.lineTo(14, 16);
+          p.lineTo(18, 11);
+          p.lineTo(22, 16);
+          canvas.drawPath(p, paint);
+          break;
         case "scan":
           canvas.drawArc(4, 4, 20, 20, 45, 280, false, paint);
           canvas.drawLine(20, 5, 20, 11, paint);

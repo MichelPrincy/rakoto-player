@@ -39,6 +39,9 @@ public class MainActivity extends Activity {
   private boolean bound, visible, playerVisible, fullscreen, menuOpen, seeking, attached, pip;
   private int selectedVideo = -1;
   private BrowserScreen browser;
+  private VaultTransfers vaultTransfers;
+  private StartupSplash startupSplash;
+  private MediaEntry legacyToLink;
   private final Set<AlertDialog> privateDialogs = new HashSet<>();
   private boolean externalPicker;
   private String artUri = "", lastError = "";
@@ -47,14 +50,16 @@ public class MainActivity extends Activity {
   private final PlaybackService.Listener listener = this::refresh;
   private final Runnable hideControls =
       () -> {
-        if (fullscreen && !menuOpen && !seeking && !pip)
+        if (fullscreen && !menuOpen && !seeking && !pip) {
           this.controls.setVisibility(View.INVISIBLE);
+          updateVideoBounds();
+        }
       };
   private final Runnable tick =
       new Runnable() {
         @Override
         public void run() {
-          if (visible && service!=null && service.current!=null) {
+          if (visible && service != null && service.current != null) {
             refreshTimeline();
             handler.postDelayed(this, 500);
           }
@@ -104,6 +109,10 @@ public class MainActivity extends Activity {
     library = new Library(this);
     setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
     buildUi();
+    vaultTransfers = new VaultTransfers(this, browser);
+    browser.jobs.execute(() -> VaultGallery.cleanup(getApplicationContext()));
+    if (state == null && !getIntent().getBooleanExtra("player", false))
+      startupSplash = new StartupSplash(this);
     adaptLayout();
     pendingIntent = getIntent();
     if (PlaybackService.running || Intent.ACTION_VIEW.equals(pendingIntent.getAction()))
@@ -308,6 +317,43 @@ public class MainActivity extends Activity {
                     });
               }
 
+              public void playShuffled(List<MediaEntry> entries) {
+                List<MediaEntry> queue = new ArrayList<>(entries);
+                Collections.shuffle(queue);
+                ensureEngine(
+                    () -> {
+                      service.shuffle = true;
+                      library.preferences.edit().putBoolean("shuffle", true).apply();
+                      playEntries(queue, 0);
+                    });
+              }
+
+              public void completeVaultMove(List<MediaEntry> entries) {
+                vaultTransfers.move(entries);
+              }
+
+              public void exportPrivate(MediaEntry entry) {
+                vaultTransfers.export(entry);
+              }
+
+              public void linkVaultOriginal(MediaEntry entry) {
+                legacyToLink = entry;
+                externalPicker = true;
+                Intent intent =
+                    new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                        .setType(entry.image ? "image/*" : "video/*")
+                        .addCategory(Intent.CATEGORY_OPENABLE)
+                        .addFlags(
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                startActivityForResult(intent, 110);
+              }
+
+              public void vaultReady() {
+                if (vaultTransfers != null) vaultTransfers.resume();
+              }
+
               public void pickMedia(boolean vault) {
                 pickFiles(vault);
               }
@@ -372,12 +418,16 @@ public class MainActivity extends Activity {
     FrameLayout.LayoutParams toolbarParams = new FrameLayout.LayoutParams(-1, dp(64), Gravity.TOP);
     playerPage.addView(playerToolbar, toolbarParams);
     ImageButton back = Ui.icon(this, "back", "Revenir à la bibliothèque", false);
+    back.setBackgroundColor(Color.TRANSPARENT);
+    back.setImageDrawable(new Ui.Glyph("back", 0xfff3e7d3));
     playerToolbar.addView(back, lp(48, 48));
     click(back, () -> showLibrary());
     space(playerToolbar, 8);
-    TextView label = text("RAKOTO / LECTURE", 11, 0xff6d9dc3);
+    TextView label = text("RAKOTO / LECTURE", 11, 0xffcdbba7);
     playerToolbar.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
     ImageButton full = Ui.icon(this, "expand", "Activer ou quitter le plein écran", false);
+    full.setBackgroundColor(Color.TRANSPARENT);
+    full.setImageDrawable(new Ui.Glyph("expand", 0xfff3e7d3));
     playerToolbar.addView(full, lp(48, 48));
     click(
         full,
@@ -386,19 +436,22 @@ public class MainActivity extends Activity {
           else toast("Le plein écran immersif est disponible pour une vidéo.");
         });
     controls = column();
-    controls.setBackground(Ui.background(0xe6221914, 23, this));
-    controls.setPadding(dp(13), dp(9), dp(13), dp(10));
+    controls.setBackgroundColor(0xff171310);
+    controls.setPadding(dp(8), dp(2), dp(8), dp(4));
     FrameLayout.LayoutParams controlsParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-    controlsParams.setMargins(dp(12), 0, dp(12), dp(12));
+    controlsParams.setMargins(0, 0, 0, 0);
     playerPage.addView(controls, controlsParams);
+    controls.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateVideoBounds());
     LinearLayout seek = row();
     time = text("0:00", 11, 0xfff3e7d3);
     duration = text("0:00", 11, 0xfff3e7d3);
     timeline = new SeekBar(this);
     timeline.setMax(10000);
-    seek.addView(time, lp(44, 40));
-    seek.addView(timeline, new LinearLayout.LayoutParams(0, dp(40), 1));
-    seek.addView(duration, lp(48, 40));
+    timeline.setProgressTintList(android.content.res.ColorStateList.valueOf(0xffe3b04b));
+    timeline.setThumbTintList(android.content.res.ColorStateList.valueOf(0xffe3b04b));
+    seek.addView(time, lp(42, 30));
+    seek.addView(timeline, new LinearLayout.LayoutParams(0, dp(30), 1));
+    seek.addView(duration, lp(46, 30));
     controls.addView(seek);
     timeline.setOnSeekBarChangeListener(
         new SeekBar.OnSeekBarChangeListener() {
@@ -424,12 +477,17 @@ public class MainActivity extends Activity {
     ImageButton prev = Ui.icon(this, "previous", "Précédent", false);
     play = Ui.icon(this, "play", "Lire ou mettre en pause", true);
     ImageButton next = Ui.icon(this, "next", "Suivant", false);
-    transport.addView(prev, lp(52, 52));
-    space(transport, 19);
-    transport.addView(play, lp(60, 60));
-    space(transport, 19);
-    transport.addView(next, lp(52, 52));
-    controls.addView(transport, lp(-1, 66));
+    prev.setBackgroundColor(Color.TRANSPARENT);
+    play.setBackgroundColor(Color.TRANSPARENT);
+    next.setBackgroundColor(Color.TRANSPARENT);
+    prev.setImageDrawable(new Ui.Glyph("previous", 0xfff3e7d3));
+    next.setImageDrawable(new Ui.Glyph("next", 0xfff3e7d3));
+    transport.addView(prev, lp(40, 44));
+    space(transport, 2);
+    transport.addView(play, lp(44, 44));
+    space(transport, 2);
+    transport.addView(next, lp(40, 44));
+    controls.addView(transport, lp(-1, 46));
     click(
         prev,
         () -> {
@@ -452,14 +510,17 @@ public class MainActivity extends Activity {
     trackSelection.setGravity(Gravity.CENTER);
     trackSelection.setPadding(0, dp(4), 0, dp(5));
     trackSelection.setMaxLines(2);
-    controls.addView(trackSelection, lp(-1, -2));
+    trackSelection.setVisibility(View.GONE);
     LinearLayout options = row();
+    transport.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
     String[] labels = {"Audio", "Sous-titres", "Options"};
     for (int i = 0; i < 3; i++) {
       final int action = i;
-      Button button = Ui.button(this, labels[i], false);
-      button.setTextSize(11);
-      options.addView(button, new LinearLayout.LayoutParams(0, dp(43), 1));
+      ImageButton button =
+          Ui.icon(this, new String[] {"volume", "cc", "more"}[i], labels[i], false);
+      button.setBackgroundColor(Color.TRANSPARENT);
+      button.setImageDrawable(new Ui.Glyph(new String[] {"volume", "cc", "more"}[i], 0xfff3e7d3));
+      options.addView(button, lp(42, 44));
       click(
           button,
           () -> {
@@ -469,7 +530,7 @@ public class MainActivity extends Activity {
             else options(button);
           });
     }
-    controls.addView(options);
+    transport.addView(options);
     GestureDetector gestures =
         new GestureDetector(
             this,
@@ -561,6 +622,11 @@ public class MainActivity extends Activity {
             .setType("*/*")
             .addCategory(Intent.CATEGORY_OPENABLE)
             .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+    intent.addFlags(
+        Intent.FLAG_GRANT_READ_URI_PERMISSION
+            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+    if (vault) intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {"video/*", "image/*"});
     startActivityForResult(intent, vault ? OPEN_VAULT : OPEN_MEDIA);
   }
 
@@ -579,6 +645,7 @@ public class MainActivity extends Activity {
     if (Build.VERSION.SDK_INT >= 33) {
       permissions.add(Manifest.permission.READ_MEDIA_AUDIO);
       permissions.add(Manifest.permission.READ_MEDIA_VIDEO);
+      permissions.add(Manifest.permission.READ_MEDIA_IMAGES);
       if (Build.VERSION.SDK_INT >= 34)
         permissions.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED);
     } else permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE);
@@ -596,6 +663,14 @@ public class MainActivity extends Activity {
   @Override
   public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
     super.onRequestPermissionsResult(request, permissions, results);
+    if (request == VaultTransfers.WRITE) {
+      externalPicker = false;
+      boolean granted =
+          checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+              == PackageManager.PERMISSION_GRANTED;
+      if (!vaultTransfers.exportPermission(granted)) vaultTransfers.permission(granted);
+      return;
+    }
     if (request == READ_MEDIA) {
       browser.scan();
       browser.reload();
@@ -609,6 +684,28 @@ public class MainActivity extends Activity {
   }
 
   private void playPrivate(MediaEntry entry, ParcelFileDescriptor descriptor) {
+    if (entry.image) {
+      if (!visible || !browser.vault.unlocked()) {
+        try {
+          descriptor.close();
+        } catch (IOException ignored) {
+        }
+        return;
+      }
+      if (service != null && service.current != null && service.current.isPrivate())
+        service.lockPrivate();
+      AlertDialog dialog =
+          PrivateImageViewer.create(
+              this,
+              entry,
+              descriptor,
+              mediaWorker,
+              () -> vaultTransfers.export(entry),
+              closed -> privateDialogs.remove(closed));
+      privateDialogs.add(dialog);
+      dialog.show();
+      return;
+    }
     if (service == null && visible) {
       closePendingPrivate();
       pendingPrivate = descriptor;
@@ -650,21 +747,47 @@ public class MainActivity extends Activity {
   protected void onActivityResult(int request, int result, Intent data) {
     super.onActivityResult(request, result, data);
     externalPicker = false;
+    if (request == 110 && result != RESULT_OK) legacyToLink = null;
+    if (request == VaultTransfers.CONSENT) {
+      vaultTransfers.consent(result == RESULT_OK);
+      return;
+    }
     if (result != RESULT_OK || data == null) return;
     List<Uri> values = new ArrayList<>();
     if (data.getClipData() != null) {
       for (int i = 0; i < data.getClipData().getItemCount(); i++)
         values.add(data.getClipData().getItemAt(i).getUri());
     } else if (data.getData() != null) values.add(data.getData());
-    if (request == OPEN_MEDIA || request == OPEN_FOLDER)
+    if (request == OPEN_MEDIA || request == OPEN_FOLDER || request == OPEN_VAULT || request == 110)
       for (Uri uri : values)
         try {
-          if ((data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0)
+          if ((data.getFlags() & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0
+              && (data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0)
+            getContentResolver()
+                .takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+          else if ((data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0)
             getContentResolver()
                 .takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
         } catch (Exception ignored) {
         }
-    if (request == OPEN_FOLDER) {
+    if (request == 110) {
+      MediaEntry entry = legacyToLink;
+      legacyToLink = null;
+      if (entry != null && !values.isEmpty())
+        browser.withVault(
+            () ->
+                browser.job(
+                    "Association de l’original",
+                    () ->
+                        browser.vault.linkOriginal(
+                            entry,
+                            values.get(0),
+                            (stage, done, total) -> browser.progress(stage, done, total)),
+                    linked -> vaultTransfers.move(Collections.singletonList(linked)),
+                    true));
+    } else if (request == OPEN_FOLDER) {
       if (!values.isEmpty()) {
         library.addFolder(values.get(0).toString());
         browser.scan();
@@ -709,6 +832,7 @@ public class MainActivity extends Activity {
   private void showLibrary() {
     fullscreen(false);
     detachVideo();
+    if (service != null) service.closeVideo();
     playerVisible = false;
     browser.navigation().setVisibility(View.VISIBLE);
     libraryPage.setVisibility(View.VISIBLE);
@@ -762,9 +886,9 @@ public class MainActivity extends Activity {
       lastVideoUi = service.hasVideo;
       showControls();
     }
-    if(!service.hasVideo)musicPlayer.update(service);
+    if (!service.hasVideo) musicPlayer.update(service);
     handler.removeCallbacks(tick);
-    if(visible&&current!=null)handler.postDelayed(tick,500);
+    if (visible && current != null) handler.postDelayed(tick, 500);
     playerToolbar.setVisibility(service.hasVideo && !fullscreen && !pip ? View.VISIBLE : View.GONE);
     controls.setVisibility(service.hasVideo && !pip ? controls.getVisibility() : View.GONE);
     trackSelection.setText(service.loading ? "Analyse du média…" : selectedTracks());
@@ -783,7 +907,7 @@ public class MainActivity extends Activity {
     long length = Math.max(0, service.player.getLength()),
         position = Math.max(0, service.player.getTime());
     int progress = length > 0 ? (int) Math.min(10000, position * 10000 / length) : 0;
-    if(!service.hasVideo)musicPlayer.tick(service);
+    if (!service.hasVideo) musicPlayer.tick(service);
     timeline.setProgress(progress);
     timeline.setEnabled(length > 0 && service.player.isSeekable());
     drawerProgress.setProgress(progress);
@@ -1275,7 +1399,7 @@ public class MainActivity extends Activity {
     TextView about =
         text(
             "RAKOTO Player Android\n"
-                + "Version 1.0.0 bêta 3\n\n"
+                + "Version 1.0.0 bêta 4\n\n"
                 + "Lecture locale avec LibVLC 3.7.7 (VideoLAN). Aucun catalogue ou compte n’est"
                 + " nécessaire.\n\n"
                 + "La fenêtre flottante vidéo utilise le Picture-in-Picture Android. Le son en"
@@ -1413,6 +1537,38 @@ public class MainActivity extends Activity {
           fullscreen || pip ? 0 : insetBottom);
   }
 
+  private void updateVideoBounds() {
+    if (video == null || controls == null) return;
+    FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) video.getLayoutParams();
+    int bottom = pip || controls.getVisibility() != View.VISIBLE ? 0 : controls.getHeight();
+    int top = pip || fullscreen || playerToolbar.getVisibility() != View.VISIBLE ? 0 : dp(64);
+    if (params.bottomMargin != bottom || params.topMargin != top) {
+      params.bottomMargin = bottom;
+      params.topMargin = top;
+      video.setLayoutParams(params);
+    }
+  }
+
+  boolean vaultVisible() {
+    return visible && !isDestroyed();
+  }
+
+  void vaultWritePermission() {
+    externalPicker = true;
+    requestPermissions(
+        new String[] {Manifest.permission.WRITE_EXTERNAL_STORAGE}, VaultTransfers.WRITE);
+  }
+
+  void vaultConsent(IntentSender sender) {
+    externalPicker = true;
+    try {
+      startIntentSenderForResult(sender, VaultTransfers.CONSENT, null, 0, 0, 0);
+    } catch (IntentSender.SendIntentException failure) {
+      externalPicker = false;
+      vaultTransfers.consent(false);
+    }
+  }
+
   private void showControls() {
     handler.removeCallbacks(hideControls);
     if (controls == null || pip) return;
@@ -1421,6 +1577,7 @@ public class MainActivity extends Activity {
       return;
     }
     controls.setVisibility(View.VISIBLE);
+    updateVideoBounds();
     if (fullscreen && !menuOpen && !seeking) handler.postDelayed(hideControls, 3000);
   }
 
@@ -1491,6 +1648,7 @@ public class MainActivity extends Activity {
   public void onPictureInPictureModeChanged(boolean enabled, Configuration configuration) {
     super.onPictureInPictureModeChanged(enabled, configuration);
     pip = enabled;
+    lamba.setVisibility(enabled || fullscreen ? View.GONE : View.VISIBLE);
     controls.setVisibility(enabled ? View.GONE : View.VISIBLE);
     playerToolbar.setVisibility(enabled ? View.GONE : View.VISIBLE);
     drawer.setVisibility(View.GONE);
@@ -1498,6 +1656,7 @@ public class MainActivity extends Activity {
         enabled ? View.GONE : service != null && service.hasVideo ? View.GONE : View.VISIBLE);
     applyInsets();
     if (!enabled) showControls();
+    updateVideoBounds();
   }
 
   @Override
@@ -1515,8 +1674,9 @@ public class MainActivity extends Activity {
     boolean landscape =
         getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
     trackSelection.setVisibility(landscape ? View.GONE : View.VISIBLE);
-    controls.getChildAt(0).setLayoutParams(lp(-1, landscape ? 32 : 40));
-    controls.getChildAt(1).setLayoutParams(lp(-1, landscape ? 52 : 66));
+    controls.getChildAt(0).setLayoutParams(lp(-1, 30));
+    controls.getChildAt(1).setLayoutParams(lp(-1, 46));
+    updateVideoBounds();
   }
 
   @Override
@@ -1536,7 +1696,11 @@ public class MainActivity extends Activity {
   }
 
   private void navigateBack() {
-    if (fullscreen) fullscreen(false);
+    if (playerVisible
+        && service != null
+        && service.current != null
+        && (service.hasVideo || service.videoSession)) showLibrary();
+    else if (fullscreen) fullscreen(false);
     else if (playerVisible) showLibrary();
     else if (browser.skin != null && browser.skin.back()) {
     } else if (!browser.back()) finish();
@@ -1583,6 +1747,7 @@ public class MainActivity extends Activity {
     super.onStart();
     visible = true;
     browser.resume();
+    handler.post(() -> vaultTransfers.resume());
     if (!library.preferences.getBoolean("media_access_asked", false))
       handler.postDelayed(
           () -> {
@@ -1601,6 +1766,7 @@ public class MainActivity extends Activity {
   @Override
   protected void onStop() {
     visible = false;
+    if (startupSplash != null) startupSplash.close();
     browser.pause(externalPicker);
     closePendingPrivate();
     video.setKeepScreenOn(false);
@@ -1630,6 +1796,7 @@ public class MainActivity extends Activity {
       detachVideo();
     }
     if (bound || binding) unbindService(connection);
+    if (startupSplash != null) startupSplash.close();
     super.onDestroy();
   }
 

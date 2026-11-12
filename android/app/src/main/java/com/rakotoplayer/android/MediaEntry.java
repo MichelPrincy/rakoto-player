@@ -13,6 +13,9 @@ public final class MediaEntry {
   public String album = "";
   public int width, height;
   public boolean video;
+  public boolean image, moved;
+  // Only the encrypted vault catalogue persists these transfer fields.
+  public String originalUri = "", originalDigest = "";
 
   public MediaEntry(String uri, String name) {
     this.uri = uri;
@@ -47,6 +50,11 @@ public final class MediaEntry {
     } catch (Exception ignored) {
     }
     item.video = item.mime.startsWith("video/");
+    item.image =
+        item.mime.startsWith("image/")
+            || item.name
+                .toLowerCase(java.util.Locale.ROOT)
+                .matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|heic|heif|avif)$");
     if (!item.video
         && item.name
             .toLowerCase(java.util.Locale.ROOT)
@@ -74,6 +82,12 @@ public final class MediaEntry {
           .put("album", album)
           .put("width", width)
           .put("height", height);
+      if (isPrivate())
+        object
+            .put("image", image)
+            .put("moved", moved)
+            .put("originalUri", originalUri)
+            .put("originalDigest", originalDigest);
     } catch (Exception ignored) {
     }
     return object;
@@ -82,7 +96,7 @@ public final class MediaEntry {
   public static MediaEntry from(JSONObject object) {
     MediaEntry item =
         new MediaEntry(object.optString("uri"), object.optString("name", "Média local"));
-    item.title = object.optString("title", item.name);
+    item.title = MediaNames.title(object.optString("title", item.name), item.name, null);
     item.artist = object.optString("artist", "Fichier local");
     item.mime = object.optString("mime");
     item.size = object.optLong("size");
@@ -95,6 +109,10 @@ public final class MediaEntry {
     item.album = object.optString("album", "");
     item.width = object.optInt("width");
     item.height = object.optInt("height");
+    item.image = object.optBoolean("image", false);
+    item.moved = object.optBoolean("moved", false);
+    item.originalUri = object.optString("originalUri", "");
+    item.originalDigest = object.optString("originalDigest", "");
     return item;
   }
 

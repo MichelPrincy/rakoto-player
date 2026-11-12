@@ -126,7 +126,7 @@ public final class Library {
 
   private static MediaEntry entry(Cursor c) {
     MediaEntry e = new MediaEntry(c.getString(0), c.getString(1));
-    e.title = c.getString(2);
+    e.title = MediaNames.title(c.getString(2), e.name, null);
     e.artist = c.getString(3);
     e.mime = c.getString(4);
     e.size = c.getLong(5);
@@ -251,6 +251,19 @@ public final class Library {
 
   public void remove(String uri) {
     database.getWritableDatabase().delete("media", "uri=?", new String[] {uri});
+  }
+
+  public void forget(String uri) {
+    SQLiteDatabase db = database.getWritableDatabase();
+    db.beginTransaction();
+    try {
+      db.delete("media", "uri=?", new String[] {uri});
+      db.delete("favorites", "uri=?", new String[] {uri});
+      db.delete("playlist_items", "uri=?", new String[] {uri});
+      db.setTransactionSuccessful();
+    } finally {
+      db.endTransaction();
+    }
   }
 
   public boolean favorite(String uri) {

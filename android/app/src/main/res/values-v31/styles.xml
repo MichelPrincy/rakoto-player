@@ -1,0 +1,8 @@
+<resources>
+    <style name="AppTheme.Launch" parent="AppTheme">
+        <item name="android:windowSplashScreenBackground">#B5442E</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/rakoto_icon_foreground</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#FFFAF0</item>
+        <item name="android:windowSplashScreenAnimationDuration">150</item>
+    </style>
+</resources>

@@ -38,6 +38,8 @@ public class PlaybackService extends Service {
   public List<MediaEntry> queue = new ArrayList<>();
   public int queueIndex = -1, repeat = 0, volume = 100;
   public boolean shuffle;
+  public boolean videoSession;
+  private final ShuffleCycle shuffleCycle = new ShuffleCycle();
   private LibVLC vlc;
   private Library library;
   private ParcelFileDescriptor descriptor;
@@ -301,13 +303,21 @@ public class PlaybackService extends Service {
   }
 
   private void open(List<MediaEntry> items, int index, ParcelFileDescriptor prepared) {
+    open(items, index, prepared, false);
+  }
+
+  private void open(
+      List<MediaEntry> items, int index, ParcelFileDescriptor prepared, boolean navigating) {
     if (index < 0 || index >= items.size()) return;
     savePosition();
     player.stop();
     closeDescriptor();
     queue = new ArrayList<>(items);
     queueIndex = index;
+    if (!navigating) shuffleCycle.reset(queue.size(), index);
     current = queue.get(index);
+    videoSession = current.video;
+    current.title = MediaNames.title(current.title, current.name, null);
     defaultRateApplied = false;
     error = "";
     hasVideo = false;
@@ -410,12 +420,14 @@ public class PlaybackService extends Service {
       return;
     }
     int next = queueIndex + direction;
-    if (shuffle && queue.size() > 1) {
-      do {
-        next = new Random().nextInt(queue.size());
-      } while (next == queueIndex);
+    if (shuffle) {
+      next = shuffleCycle.next(queueIndex, direction, queue.size(), repeat == 2);
+      if (next < 0) {
+        stop();
+        return;
+      }
     } else next = (next + queue.size()) % queue.size();
-    open(queue, next);
+    open(queue, next, null, true);
   }
 
   public void stop() {
@@ -443,6 +455,21 @@ public class PlaybackService extends Service {
     queueIndex = -1;
     hasVideo = false;
     session.setMetadata(null);
+    videoSession = false;
+    notifyChanged();
+  }
+
+  public void closeVideo() {
+    if (current == null || (!hasVideo && !videoSession)) return;
+    stop();
+    player.setMedia(null);
+    closeDescriptor();
+    current = null;
+    queue.clear();
+    queueIndex = -1;
+    hasVideo = false;
+    session.setMetadata(null);
+    videoSession = false;
     notifyChanged();
   }
 
@@ -464,7 +491,7 @@ public class PlaybackService extends Service {
           artist = media.getMeta(Media.Meta.Artist),
           album = media.getMeta(Media.Meta.Album);
       if (album != null && !album.trim().isEmpty()) current.album = album;
-      if (title != null && !title.trim().isEmpty()) current.title = title;
+      current.title = MediaNames.title(current.title, current.name, title);
       if (artist != null && !artist.trim().isEmpty()) current.artist = artist;
       hasVideo = false;
       for (int i = 0; i < media.getTrackCount(); i++) {
@@ -477,6 +504,7 @@ public class PlaybackService extends Service {
         }
       }
       current.video = hasVideo;
+      if (hasVideo) videoSession = true;
       current.durationMs = Math.max(current.durationMs, player.getLength());
       library.update(current);
     } finally {

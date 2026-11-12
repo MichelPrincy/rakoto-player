@@ -18,7 +18,6 @@ internal class GasySkin(private val screen: BrowserScreen) {
     private val c = screen.activity
     private val prefs = screen.library.preferences
     private val art = MediaArtLoader(c)
-    private val recent = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
     private var grid = prefs.getBoolean("video_grid", false)
     private var sheet: AlertDialog? = null
     private var pinPanel: LinearLayout? = null
@@ -58,7 +57,6 @@ internal class GasySkin(private val screen: BrowserScreen) {
         screen.emptyAction.background = GasyTheme.ripple(c, GasyTheme.primary, 24f)
         screen.list.isVerticalScrollBarEnabled = false
         screen.list.setPadding(0, 0, 0, dp(8))
-        screen.addView(recent, 2, lp(-1, -2))
         val header = screen.getChildAt(0) as LinearLayout
         // Keep the user's original logo; replace the old overflow by a theme shortcut.
         val last = header.getChildAt(header.childCount - 1) as ImageButton
@@ -79,6 +77,18 @@ internal class GasySkin(private val screen: BrowserScreen) {
         val sort = tools.getChildAt(1) as Button
         sort.background = GasyTheme.ripple(c, GasyTheme.card, 20f, true)
         sort.setTextColor(GasyTheme.text)
+        val shuffle =
+            GasyTheme.button(c, "Tout lire", false).apply {
+                tag = "shuffle-all"
+                textSize = 11f
+                contentDescription = "Tout lire en mode aléatoire"
+                val icon = Ui.Glyph("shuffle", GasyTheme.primary)
+                icon.setBounds(0, 0, dp(15), dp(15))
+                setCompoundDrawablesRelative(icon, null, null, null)
+                compoundDrawablePadding = dp(5)
+                setOnClickListener { shuffleAll() }
+            }
+        tools.addView(shuffle, 1, lp(100, 38))
         val layout = GasyTheme.icon(c, "video", "Basculer liste / grille")
         tools.addView(layout, lp(42, 42))
         layout.tag = "layout"
@@ -130,6 +140,9 @@ internal class GasySkin(private val screen: BrowserScreen) {
                 "playlists" to "Playlists",
                 "favorites" to "Favoris",
                 "recent" to "Récentes",
+                "images" to "Images",
+                "videos" to "Vidéos",
+                "pending" to "À terminer",
                 "unread" to "Non lues",
                 "import" to "Importer",
                 "lock" to "Verrouiller",
@@ -156,13 +169,16 @@ internal class GasySkin(private val screen: BrowserScreen) {
         }
         if (screen.tab == 0 && screen.groupValue != null)
             screen.pathLabel.text = "‹ ${screen.groupValue.ifEmpty { "Sans information" }}"
-        recent.visibility =
-            if (screen.tab == 0 && screen.mode == "all" && screen.query.isEmpty()) View.VISIBLE
-            else View.GONE
-        if (screen.tab == 2) {
-            screen.subtitle.text = "Chiffré sur cet appareil · originaux conservés"
-            recent.visibility = View.GONE
+        tools.findViewWithTag<View>("shuffle-all")?.apply {
+            visibility = if (screen.tab == 0 && screen.mode == "all") View.VISIBLE else View.GONE
+            isEnabled = screen.rows.any { it.media != null && !it.media.isPrivate }
         }
+        if (screen.tab == 2) screen.subtitle.text = "Vidéos .rpv · Images .rpi · Chiffrement local"
+    }
+
+    private fun shuffleAll() {
+        val entries = screen.rows.mapNotNull { it.media }.filter { !it.isPrivate && !it.image }
+        if (entries.isNotEmpty()) screen.actions.playShuffled(entries)
     }
 
     fun rowsChanged() {
@@ -170,31 +186,6 @@ internal class GasySkin(private val screen: BrowserScreen) {
         if (screen.tab < 2)
             screen.subtitle.text =
                 "${screen.rows.size} ${if(screen.rows.any{it.media==null})"éléments" else if(screen.tab==0)"titres" else "vidéos"} dans cette vue"
-        if (screen.tab == 0 && screen.mode == "all" && screen.query.isEmpty()) {
-            recent.removeAllViews()
-            val entries =
-                screen.rows
-                    .filter { it.media != null }
-                    .sortedByDescending { it.media.addedAt }
-                    .take(3)
-            if (entries.isNotEmpty()) {
-                recent.addView(label("Récemment ajoutés", 12f, GasyTheme.muted, true), lp(-1, 28))
-                val scroll = HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false }
-                val strip = row()
-                for (entry in entries) {
-                    val b =
-                        GasyTheme.button(c, entry.title, false).apply {
-                            maxLines = 1
-                            ellipsize = TextUtils.TruncateAt.END
-                            textSize = 11f
-                            setOnClickListener { screen.open(entry) }
-                        }
-                    strip.addView(b, lp(150, 38).apply { rightMargin = dp(7) })
-                }
-                scroll.addView(strip)
-                recent.addView(scroll, lp(-1, 42))
-            }
-        }
     }
 
     fun isGrid() = screen.tab == 1 && grid
@@ -274,12 +265,15 @@ internal class GasySkin(private val screen: BrowserScreen) {
                 image.setImageDrawable(Ui.Glyph(value.icon, GasyTheme.primary))
             }
             detail.text =
-                if (media != null && !video)
+                if (media != null && media.isPrivate)
+                    "${if(media.image)"Image .rpi" else "Vidéo .rpv"} · ${GasyTheme.bytes(media.size)} · ${if(media.originalUri.isNotEmpty())"Original à retirer" else if(media.moved)"Déplacé" else "Ancienne copie"}"
+                else if (media != null && !video)
                     listOf(media.artist, media.album).filter { it.isNotBlank() }.joinToString(" · ")
                 else if (media != null)
                     "${if(media.width>0)"${media.width} × ${media.height} · " else ""}${GasyTheme.bytes(media.size)} · ${Ui.time(media.durationMs)}"
                 else value.detail
-            time.visibility = if (media != null && !video) View.VISIBLE else View.GONE
+            time.visibility =
+                if (media != null && !video && !media.image) View.VISIBLE else View.GONE
             time.text =
                 if (media != null && media.durationMs > 0) Ui.time(media.durationMs) else "—"
             more.contentDescription = "Options de ${value.title}"
@@ -424,7 +418,7 @@ internal class GasySkin(private val screen: BrowserScreen) {
     private fun importPicker() {
         val generation = screen.vault.generation()
         screen.data.execute {
-            val videos = screen.library.entries(true, false, null).sortedByDescending { it.addedAt }
+            val videos = VaultCandidates.list(c, screen.library)
             screen.handler.post {
                 if (
                     screen.destroyed ||
@@ -437,7 +431,7 @@ internal class GasySkin(private val screen: BrowserScreen) {
                 val chosen = linkedSetOf<String>()
                 val search =
                     EditText(c).apply {
-                        hint = "Rechercher une vidéo"
+                        hint = "Rechercher une vidéo ou une image"
                         isSingleLine = true
                         setTextColor(GasyTheme.text)
                         setHintTextColor(GasyTheme.muted)
@@ -445,8 +439,9 @@ internal class GasySkin(private val screen: BrowserScreen) {
                 panel.addView(search, lp(-1, 48))
                 val list = ListView(c).apply { divider = null }
                 var minimum = 0L
+                var kind = "all"
                 val filters = row()
-                val confirm = button("Copier 0 vidéo") {}
+                val confirm = button("Déplacer 0 fichier") {}
                 var filtered = videos
                 val adapter =
                     object : BaseAdapter() {
@@ -471,12 +466,12 @@ internal class GasySkin(private val screen: BrowserScreen) {
                                 .apply {
                                     setOnCheckedChangeListener(null)
                                     text =
-                                        "${video.title}\n${Ui.time(video.durationMs)} · ${GasyTheme.bytes(video.size)}"
+                                        "${video.title}\n${if(video.image)"Image" else Ui.time(video.durationMs)} · ${GasyTheme.bytes(video.size)}"
                                     isChecked = chosen.contains(video.uri)
                                     setOnCheckedChangeListener { _, checked ->
                                         if (checked) chosen.add(video.uri)
                                         else chosen.remove(video.uri)
-                                        confirm.text = "Copier ${chosen.size} vidéo(s)"
+                                        confirm.text = "Déplacer ${chosen.size} fichier(s)"
                                     }
                                 }
                         }
@@ -484,7 +479,11 @@ internal class GasySkin(private val screen: BrowserScreen) {
                 list.adapter = adapter
                 fun populate() {
                     filtered = videos.filter {
-                        it.durationMs >= minimum && it.title.contains(search.text.toString(), true)
+                        (minimum == 0L || !it.image && it.durationMs >= minimum) &&
+                            (kind == "all" ||
+                                kind == "images" && it.image ||
+                                kind == "videos" && it.video) &&
+                            it.title.contains(search.text.toString(), true)
                     }
                     adapter.notifyDataSetChanged()
                 }
@@ -500,6 +499,21 @@ internal class GasySkin(private val screen: BrowserScreen) {
                         },
                         LinearLayout.LayoutParams(0, dp(40), 1f),
                     )
+                val kinds = row()
+                for ((name, key) in
+                    listOf("Tout" to "all", "Vidéos" to "videos", "Images" to "images")) kinds
+                    .addView(
+                        GasyTheme.button(c, name, false).apply {
+                            textSize = 11f
+                            setOnClickListener {
+                                kind = key
+                                minimum = 0L
+                                populate()
+                            }
+                        },
+                        LinearLayout.LayoutParams(0, dp(40), 1f),
+                    )
+                panel.addView(kinds)
                 panel.addView(filters)
                 panel.addView(list, lp(-1, 260))
                 search.addTextChangedListener(
@@ -542,7 +556,7 @@ internal class GasySkin(private val screen: BrowserScreen) {
                 )
                 panel.addView(
                     label(
-                            "Les originaux sont conservés. Les copies sont chiffrées dans le coffre.",
+                            "Chiffrement et vérification avant retrait des originaux. Android peut demander une confirmation.",
                             11f,
                             GasyTheme.muted,
                         )
@@ -556,6 +570,14 @@ internal class GasySkin(private val screen: BrowserScreen) {
 
     fun sort() {
         val panel = col()
+        if (screen.tab == 0 && screen.mode == "all")
+            panel.addView(
+                button("Tout lire en mode aléatoire") {
+                    sheet?.dismiss()
+                    shuffleAll()
+                },
+                lp(-1, 48),
+            )
         val labels = arrayOf("Nom", "Durée", "Taille", "Date d’ajout")
         val group = RadioGroup(c)
         labels.forEachIndexed { i, s ->
@@ -624,35 +646,45 @@ internal class GasySkin(private val screen: BrowserScreen) {
             return
         }
         if (media.isPrivate) {
-            choices(
-                "Vidéo privée",
-                listOf(
-                    "Lire" to { screen.open(item) },
+            val commands =
+                mutableListOf<Pair<String, () -> Unit>>(
+                    (if (media.image) "Ouvrir l’image" else "Lire") to { screen.open(item) },
+                    "Restaurer dans la galerie" to { screen.actions.exportPrivate(media) },
                     "Informations" to { screen.info(media) },
-                    "Supprimer la copie chiffrée" to
-                        {
-                            screen.showPrivate(
-                                AlertDialog.Builder(c)
-                                    .setMessage(
-                                        "Supprimer la copie du coffre ? Le fichier original est conservé."
+                )
+            if (media.originalUri.isNotEmpty())
+                commands.add(
+                    "Terminer le déplacement" to { screen.actions.completeVaultMove(listOf(media)) }
+                )
+            else if (!media.moved)
+                commands.add(
+                    "Associer et retirer l’original" to { screen.actions.linkVaultOriginal(media) }
+                )
+            commands.add(
+                "Supprimer définitivement du coffre" to
+                    {
+                        screen.showPrivate(
+                            AlertDialog.Builder(c)
+                                .setTitle("Supprimer définitivement ?")
+                                .setMessage(
+                                    "Le fichier chiffré sera effacé. Si l’original a été retiré, cette action supprime la dernière copie dans RAKOTO. Restaurez-le dans la galerie pour le conserver."
+                                )
+                                .setNegativeButton("Annuler", null)
+                                .setPositiveButton("Supprimer") { _, _ ->
+                                    screen.job(
+                                        "Suppression",
+                                        {
+                                            screen.vault.delete(media)
+                                            true
+                                        },
+                                        { screen.reload() },
+                                        false,
                                     )
-                                    .setNegativeButton("Annuler", null)
-                                    .setPositiveButton("Supprimer") { _, _ ->
-                                        screen.job(
-                                            "Suppression",
-                                            {
-                                                screen.vault.delete(media)
-                                                true
-                                            },
-                                            { screen.reload() },
-                                            false,
-                                        )
-                                    }
-                            )
-                        },
-                ),
-                true,
+                                }
+                        )
+                    }
             )
+            choices(if (media.image) "Image privée" else "Vidéo privée", commands, true)
             return
         }
         val items =
@@ -701,7 +733,6 @@ internal class GasySkin(private val screen: BrowserScreen) {
 
     fun settings() {
         pageChanged()
-        recent.visibility = View.GONE
         screen.list.visibility = View.GONE
         screen.emptyBox.visibility = View.GONE
         for (i in screen.body.childCount - 1 downTo 0) {
@@ -807,7 +838,7 @@ internal class GasySkin(private val screen: BrowserScreen) {
         }
         panel.addView(
             label(
-                    "Verrouillage automatique à la sortie de l’application. Les imports sont des copies chiffrées : les originaux restent dans leurs dossiers.",
+                    "Verrouillage automatique à la sortie de l’application. Les imports déplacent vidéos et images après vérification. Les retraits non autorisés restent indiqués « À terminer ».",
                     12f,
                     GasyTheme.muted,
                 )
@@ -832,7 +863,7 @@ internal class GasySkin(private val screen: BrowserScreen) {
                 }
                 .show()
         }
-        action("RAKOTO Player · bêta 3", "Interface Kotlin native · lecture hors ligne LibVLC") {
+        action("RAKOTO Player · bêta 4", "Interface Kotlin native · lecture hors ligne LibVLC") {
             screen.actions.settings()
         }
         action("Autorisations Android", "Gérer l’accès aux médias et aux notifications") {

@@ -14,6 +14,7 @@ public final class VaultFileTest {
     File file=root.resolve("roundtrip.vlt").toFile();long size=VaultFile.encrypt(new ByteArrayInputStream(plain),file,key,done->{});check(size==plain.length,"taille réelle");
     try(VaultFile.Reader reader=new VaultFile.Reader(file,key,plain.length)){
       reader.verify(done->{});byte[] buffer=new byte[700003];long offset=0;while(offset<plain.length){int count=reader.read(offset,buffer,buffer.length);check(Arrays.equals(Arrays.copyOf(buffer,count),Arrays.copyOfRange(plain,(int)offset,(int)offset+count)),"lecture complète");offset+=count;}
+      ByteArrayOutputStream restored=new ByteArrayOutputStream();reader.copyTo(restored,done->{});check(Arrays.equals(plain,restored.toByteArray()),"export authentifié exact");
       for(long at:new long[]{0,17,262140,262145,2*262144-7,plain.length-19}){int count=reader.read(at,buffer,buffer.length);check(Arrays.equals(Arrays.copyOf(buffer,count),Arrays.copyOfRange(plain,(int)at,(int)at+count)),"seek "+at);}
       check(reader.read(plain.length,buffer,1)==0,"fin de fichier");
     }
@@ -24,6 +25,9 @@ public final class VaultFileTest {
     Path truncated=root.resolve("truncated.vlt");Files.write(truncated,Arrays.copyOf(encrypted,encrypted.length-8));rejected(()->{try(VaultFile.Reader ignored=new VaultFile.Reader(truncated.toFile(),key,plain.length)){}},"troncature");
     byte[] swapped=encrypted.clone();int block=262144+16;System.arraycopy(encrypted,36,swapped,36+block,block);System.arraycopy(encrypted,36+block,swapped,36,block);Path reorder=root.resolve("reordered.vlt");Files.write(reorder,swapped);rejected(()->{try(VaultFile.Reader r=new VaultFile.Reader(reorder.toFile(),key,plain.length)){r.verify(done->{});}},"blocs permutés");
     File empty=root.resolve("empty.vlt").toFile();rejected(()->VaultFile.encrypt(new ByteArrayInputStream(new byte[0]),empty,key,done->{}),"fichier vide");
+    for(String suffix:new String[]{".rpi",".rpv"}){File typed=root.resolve("media"+suffix).toFile();VaultFile.encrypt(new ByteArrayInputStream(plain),typed,key,done->{});try(VaultFile.Reader reader=new VaultFile.Reader(typed,key,plain.length)){ByteArrayOutputStream restored=new ByteArrayOutputStream();reader.copyTo(restored,done->{});check(Arrays.equals(plain,restored.toByteArray()),"aller-retour "+suffix);}}
+    rejected(()->{try(VaultFile.Reader reader=new VaultFile.Reader(bad.toFile(),key,plain.length)){reader.copyTo(new ByteArrayOutputStream(),done->{});}},"export d’un fichier corrompu");
+    rejected(()->{try(VaultFile.Reader reader=new VaultFile.Reader(file,key,plain.length)){reader.copyTo(new ByteArrayOutputStream(),done->{throw new InterruptedIOException("coffre verrouillé");});}},"export interrompu");
     System.out.println("Coffre : chiffrement réel, lecture complète, seeks inter-blocs, nonces, mauvaises clés, corruption, troncature et permutation vérifiés.");
   }
 }

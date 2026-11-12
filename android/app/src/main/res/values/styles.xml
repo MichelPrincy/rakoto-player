@@ -5,4 +5,7 @@
         <item name="android:navigationBarColor">#FFFAF0</item><item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowBackground">#F6EEDC</item>
     </style>
+    <style name="AppTheme.Launch" parent="AppTheme">
+        <item name="android:windowBackground">#B5442E</item>
+    </style>
 </resources>

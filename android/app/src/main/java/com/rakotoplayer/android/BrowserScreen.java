@@ -23,6 +23,16 @@ final class BrowserScreen extends LinearLayout {
 
     void enqueue(MediaEntry entry);
 
+    void playShuffled(List<MediaEntry> entries);
+
+    void completeVaultMove(List<MediaEntry> entries);
+
+    void exportPrivate(MediaEntry entry);
+
+    void linkVaultOriginal(MediaEntry entry);
+
+    void vaultReady();
+
     void pickMedia(boolean vault);
 
     void pickFolder();
@@ -116,7 +126,7 @@ final class BrowserScreen extends LinearLayout {
     LinearLayout header = row();
     header.setPadding(0, dp(10), 0, dp(8));
     ImageView logo = new ImageView(activity);
-    logo.setImageResource(R.drawable.rakoto_logo);
+    logo.setImageResource(R.drawable.rakoto_mark);
     logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
     header.addView(logo, lp(46, 43));
     LinearLayout titles = column();
@@ -340,7 +350,7 @@ final class BrowserScreen extends LinearLayout {
             ? new String[] {"all", "albums", "artists", "folders", "playlists", "favorites"}
             : tab == 1
                 ? new String[] {"all", "recent", "unread", "folders", "favorites", "playlists"}
-                : new String[] {"all", "lock"};
+                : new String[] {"all", "videos", "images", "pending", "lock"};
     for (String key : keys) {
       String label =
           "all".equals(key)
@@ -449,10 +459,11 @@ final class BrowserScreen extends LinearLayout {
       if (skin != null) skin.lockedVault();
       return;
     }
+    if (tab == 2 && vault.unlocked()) actions.vaultReady();
     emptyAction.setText(
         "playlists".equals(mode) && playlistId == null
             ? "Créer une playlist"
-            : tab == 2 ? "Importer des vidéos" : "Scanner mes médias");
+            : tab == 2 ? "Importer vidéos et images" : "Scanner mes médias");
     pathLabel.setText(
         playlistId != null
             ? "‹ " + playlistName
@@ -462,7 +473,7 @@ final class BrowserScreen extends LinearLayout {
                     ? "Playlists"
                     : "favorites".equals(mode)
                         ? "Favoris"
-                        : tab == 2 ? "Vidéos privées" : "Tous les fichiers");
+                        : tab == 2 ? "Vidéos et images privées" : "Tous les fichiers");
     if (skin != null) skin.pageChanged();
     data.execute(
         () -> {
@@ -582,8 +593,9 @@ final class BrowserScreen extends LinearLayout {
                           : "playlists".equals(filter)
                               ? "Vos playlists commencent ici."
                               : selected == 2
-                                  ? "Ajoutez vos premières vidéos.\n"
-                                      + "Les originaux restent à leur place."
+                                  ? "Ajoutez vos premières vidéos et images.\n"
+                                      + "Les originaux sont retirés après chiffrement vérifié et"
+                                      + " autorisation Android."
                                   : "Aucun média dans cette vue.\n"
                                       + "Autorisez le scan ou ajoutez un dossier.");
                   if (!term.isEmpty()) emptyAction.setVisibility(GONE);
@@ -615,10 +627,11 @@ final class BrowserScreen extends LinearLayout {
   }
 
   Row mediaRow(MediaEntry e) {
-    Row row = new Row(e.title, duration(e.durationMs) + " · " + bytes(e.size));
+    Row row =
+        new Row(e.title, (e.image ? "Image" : duration(e.durationMs)) + " · " + bytes(e.size));
     row.media = e;
-    row.icon = e.video ? "video" : "music";
-    if (!e.video) row.detail = e.artist + " · " + row.detail;
+    row.icon = e.image ? "photo" : e.video ? "video" : "music";
+    if (!e.video && !e.image) row.detail = e.artist + " · " + row.detail;
     return row;
   }
 
@@ -786,12 +799,21 @@ final class BrowserScreen extends LinearLayout {
             .setMessage(
                 bytes(entry.size)
                     + "\n"
-                    + duration(entry.durationMs)
+                    + (entry.image ? "Image" : duration(entry.durationMs))
                     + "\nAjout : "
                     + DateFormat.getDateTimeInstance(
                             DateFormat.MEDIUM, DateFormat.SHORT, Locale.FRANCE)
                         .format(new Date(entry.addedAt))
-                    + (entry.isPrivate() ? "\nCopie chiffrée dans le coffre" : "\n" + entry.folder))
+                    + (entry.isPrivate()
+                        ? "\nFormat privé : "
+                            + (entry.image ? ".rpi" : ".rpv")
+                            + " · AES-256-GCM\n"
+                            + (!entry.originalUri.isEmpty()
+                                ? "Original à retirer : déplacement non terminé"
+                                : entry.moved
+                                    ? "Original retiré après vérification"
+                                    : "Ancienne copie : original non associé")
+                        : "\n" + entry.folder))
             .setPositiveButton("Fermer", null);
     if (entry.isPrivate()) showPrivate(builder);
     else builder.show();
@@ -1077,22 +1099,25 @@ final class BrowserScreen extends LinearLayout {
       withVault(
           () -> {
             new AlertDialog.Builder(activity)
-                .setTitle("Copier dans le coffre")
+                .setTitle("Déplacer dans le coffre")
                 .setMessage(
-                    "Les vidéos choisies seront copiées et chiffrées. Leurs originaux resteront"
-                        + " dans leurs dossiers et pourront toujours apparaître dans Vidéo.")
+                    "Les vidéos et images seront chiffrées et vérifiées dans RAKOTO, puis leurs"
+                        + " originaux seront retirés de la galerie. Android pourra demander votre"
+                        + " accord. Vous pourrez les restaurer depuis le coffre. Restaurez vos"
+                        + " fichiers avant de désinstaller RAKOTO : la désinstallation efface le"
+                        + " coffre.")
                 .setNegativeButton("Annuler", null)
                 .setPositiveButton(
-                    "Copier et chiffrer",
+                    "Chiffrer et déplacer",
                     (dialog, which) ->
                         job(
                             "Import dans le coffre",
                             () ->
-                                vault.importVideos(
+                                vault.importMedia(
                                     uris, (stage, done, total) -> progress(stage, done, total)),
-                            count -> {
-                              toast(count + " vidéo(s) copiée(s) dans le coffre");
+                            entries -> {
                               reload();
+                              actions.completeVaultMove(entries);
                             },
                             true))
                 .show();

@@ -13,7 +13,7 @@ public final class VaultFile {
   private static final byte[] MAGIC = {'R', 'A', 'K', 'O', 'V', 'L', 'T', '2'};
 
   public interface Progress {
-    void bytes(long done);
+    void bytes(long done) throws IOException;
   }
 
   private static void cancelled() throws InterruptedIOException {
@@ -149,6 +149,25 @@ public final class VaultFile {
         offset += length;
       }
       return written;
+    }
+
+    public void copyTo(OutputStream output, Progress progress)
+        throws IOException, GeneralSecurityException {
+      byte[] buffer = new byte[CHUNK];
+      long position = 0;
+      try {
+        while (position < size) {
+          cancelled();
+          int count = read(position, buffer, buffer.length);
+          if (count <= 0) throw new EOFException();
+          output.write(buffer, 0, count);
+          position += count;
+          progress.bytes(position);
+        }
+        output.flush();
+      } finally {
+        Arrays.fill(buffer, (byte) 0);
+      }
     }
 
     public void verify(Progress progress) throws IOException, GeneralSecurityException {

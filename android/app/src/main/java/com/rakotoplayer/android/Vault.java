@@ -250,9 +250,20 @@ public final class Vault {
       output = atomic.startWrite();
       output.write(encrypted);
       atomic.finishWrite(output);
-    } catch (IOException failure) {
+      syncDirectory();
+    } catch (Exception failure) {
       if (output != null) atomic.failWrite(output);
       throw failure;
+    }
+  }
+
+  private void syncDirectory() throws Exception {
+    java.io.FileDescriptor folder =
+        android.system.Os.open(directory.getAbsolutePath(), android.system.OsConstants.O_RDONLY, 0);
+    try {
+      android.system.Os.fsync(folder);
+    } finally {
+      android.system.Os.close(folder);
     }
   }
 
@@ -260,37 +271,128 @@ public final class Vault {
     String id = Uri.parse(entry.uri).getHost();
     if (id == null || !UUID.fromString(id).toString().equals(id))
       throw new IllegalArgumentException("Identifiant du coffre invalide");
-    return new File(directory, id + ".vlt");
+    File modern = new File(directory, id + (entry.image ? ".rpi" : ".rpv"));
+    return modern.exists() ? modern : new File(directory, id + ".vlt");
   }
 
   public List<MediaEntry> entries() throws Exception {
     byte[] key = key();
     try {
-      return readCatalog(key);
+      List<MediaEntry> entries = readCatalog(key);
+      boolean renamed = false;
+      for (MediaEntry entry : entries) {
+        File old = file(entry);
+        if (old.getName().endsWith(".vlt")) {
+          File modern =
+              new File(directory, Uri.parse(entry.uri).getHost() + (entry.image ? ".rpi" : ".rpv"));
+          if (old.exists() && !modern.exists() && old.renameTo(modern)) renamed = true;
+        }
+      }
+      if (renamed) syncDirectory();
+      return entries;
     } finally {
       Arrays.fill(key, (byte) 0);
     }
   }
 
-  public int importVideos(List<Uri> uris, Progress progress) throws Exception {
+  /** Associates a beta-3 copy only after proving the selected original has identical bytes. */
+  public MediaEntry linkOriginal(MediaEntry entry, Uri original, Progress progress)
+      throws Exception {
+    long expected = generation();
+    MessageDigest encrypted = MessageDigest.getInstance("SHA-256");
+    OutputStream sink =
+        new OutputStream() {
+          @Override
+          public void write(int value) {}
+
+          @Override
+          public void write(byte[] value, int offset, int length) {}
+        };
+    exportTo(
+        entry,
+        new DigestOutputStream(sink, encrypted),
+        (stage, done, total) -> progress.changed("Vérification du coffre", done, total));
+    MessageDigest source = MessageDigest.getInstance("SHA-256");
+    byte[] buffer = new byte[VaultFile.CHUNK];
+    long size = 0;
+    try (InputStream input = context.getContentResolver().openInputStream(original)) {
+      if (input == null) throw new IOException("Original inaccessible");
+      int read;
+      while ((read = input.read(buffer)) != -1) {
+        if (Thread.currentThread().isInterrupted() || !unlocked() || generation() != expected)
+          throw new InterruptedIOException("Association annulée");
+        source.update(buffer, 0, read);
+        size += read;
+        progress.changed("Vérification de l’original", size, entry.size);
+      }
+    } finally {
+      Arrays.fill(buffer, (byte) 0);
+    }
+    byte[] digest = source.digest();
+    if (size != entry.size || !MessageDigest.isEqual(encrypted.digest(), digest))
+      throw new IOException(
+          "Ce fichier ne correspond pas au contenu chiffré. Aucun original n’a été supprimé.");
+    byte[] secret = key();
+    try {
+      synchronized (this) {
+        if (generation() != expected) throw new IOException("Coffre verrouillé");
+        List<MediaEntry> entries = readCatalog(secret);
+        for (MediaEntry item : entries)
+          if (item.uri.equals(entry.uri)) {
+            item.originalUri = original.toString();
+            item.originalDigest = hex(digest);
+            item.moved = false;
+            writeCatalog(secret, entries);
+            return item;
+          }
+        throw new IOException("Fichier privé introuvable");
+      }
+    } finally {
+      Arrays.fill(secret, (byte) 0);
+    }
+  }
+
+  public List<MediaEntry> importMedia(List<Uri> uris, Progress progress) throws Exception {
     byte[] key = key();
-    int imported = 0;
+    List<MediaEntry> imported = new ArrayList<>();
     try {
       List<MediaEntry> catalog = readCatalog(key);
       for (Uri uri : uris) {
         if (Thread.currentThread().isInterrupted())
           throw new InterruptedIOException("Import annulé");
         MediaEntry original = MediaEntry.read(context, uri);
-        MediaScanner.duration(context, original);
-        if (!original.video)
-          throw new IOException("Ce fichier n’est pas identifié comme vidéo : " + original.name);
+        MediaEntry pending = null;
+        for (MediaEntry entry : catalog)
+          if (uri.toString().equals(entry.originalUri)) {
+            pending = entry;
+            break;
+          }
+        if (pending != null) {
+          try {
+            verifyOriginal(pending, progress);
+            imported.add(pending);
+            continue;
+          } catch (InterruptedIOException cancelled) {
+            throw cancelled;
+          } catch (IOException | GeneralSecurityException changed) {
+            // Keep the old encrypted version; a freshly verified import owns the current source.
+            pending.originalUri = "";
+            pending.originalDigest = "";
+            pending.moved = false;
+          }
+        }
+        if (!original.image) MediaScanner.duration(context, original);
+        if (!original.video && !original.image)
+          throw new IOException("Sélectionnez une vidéo ou une image : " + original.name);
         String id = UUID.randomUUID().toString();
         File partial = new File(directory, id + ".part"),
-            complete = new File(directory, id + ".vlt");
+            complete = new File(directory, id + (original.image ? ".rpi" : ".rpv"));
         boolean saved = false;
         try {
           long size;
-          try (InputStream input = context.getContentResolver().openInputStream(uri)) {
+          MessageDigest digest = MessageDigest.getInstance("SHA-256");
+          try (InputStream source = context.getContentResolver().openInputStream(uri)) {
+            InputStream input = source == null ? null : new DigestInputStream(source, digest);
             if (input == null) throw new IOException("Vidéo inaccessible");
             size =
                 VaultFile.encrypt(
@@ -307,16 +409,21 @@ public final class Vault {
             throw new IOException("Enregistrement de la vidéo impossible");
           MediaEntry item = new MediaEntry("rakoto-vault://" + id, original.name);
           item.title = original.title;
-          item.video = true;
+          item.video = original.video;
+          item.image = original.image;
           item.source = "vault";
           item.mime = original.mime;
           item.size = size;
           item.durationMs = original.durationMs;
+          item.width = original.width;
+          item.height = original.height;
+          item.originalUri = uri.toString();
+          item.originalDigest = hex(digest.digest());
           item.folder = "Coffre";
           catalog.add(item);
           writeCatalog(key, catalog);
           saved = true;
-          imported++;
+          imported.add(item);
         } finally {
           if (partial.exists()) partial.delete();
           if (!saved && complete.exists()) complete.delete();
@@ -325,6 +432,96 @@ public final class Vault {
       return imported;
     } finally {
       Arrays.fill(key, (byte) 0);
+    }
+  }
+
+  private static String hex(byte[] value) {
+    StringBuilder text = new StringBuilder(value.length * 2);
+    for (byte b : value) text.append(String.format(Locale.ROOT, "%02x", b & 255));
+    return text.toString();
+  }
+
+  /** Recheck the encrypted item and source bytes before a destructive source operation. */
+  public void verifyOriginal(MediaEntry entry, Progress progress) throws Exception {
+    if (entry.originalUri.isEmpty() || !entry.originalDigest.matches("[a-f0-9]{64}"))
+      throw new IOException("Aucun original associé à ce fichier");
+    long generation = generation();
+    byte[] secret = key();
+    try (VaultFile.Reader reader = new VaultFile.Reader(file(entry), secret, entry.size)) {
+      reader.verify(
+          done -> {
+            if (!unlocked() || generation != generation())
+              throw new InterruptedIOException("Coffre verrouillé");
+            progress.changed("Vérification du coffre", done, entry.size);
+          });
+    } finally {
+      Arrays.fill(secret, (byte) 0);
+    }
+    MessageDigest digest = MessageDigest.getInstance("SHA-256");
+    byte[] buffer = new byte[VaultFile.CHUNK];
+    long done = 0;
+    try (InputStream source =
+        context.getContentResolver().openInputStream(Uri.parse(entry.originalUri))) {
+      if (source == null) throw new IOException("Original inaccessible");
+      int read;
+      while ((read = source.read(buffer)) != -1) {
+        if (Thread.currentThread().isInterrupted() || !unlocked() || generation != generation())
+          throw new InterruptedIOException("Vérification annulée");
+        digest.update(buffer, 0, read);
+        done += read;
+        progress.changed("Vérification de l’original", done, entry.size);
+      }
+    } finally {
+      Arrays.fill(buffer, (byte) 0);
+    }
+    if (done != entry.size
+        || !MessageDigest.isEqual(digest.digest(), decodeHex(entry.originalDigest)))
+      throw new IOException(
+          "L’original a changé. Il est conservé ; réimportez sa nouvelle version.");
+  }
+
+  private static byte[] decodeHex(String value) {
+    byte[] bytes = new byte[value.length() / 2];
+    for (int i = 0; i < bytes.length; i++)
+      bytes[i] = (byte) Integer.parseInt(value.substring(i * 2, i * 2 + 2), 16);
+    return bytes;
+  }
+
+  public synchronized void moved(MediaEntry entry) throws Exception {
+    byte[] secret = key();
+    try {
+      List<MediaEntry> entries = readCatalog(secret);
+      boolean found = false;
+      for (MediaEntry item : entries)
+        if (item.uri.equals(entry.uri) && item.originalUri.equals(entry.originalUri)) {
+          item.originalUri = "";
+          item.originalDigest = "";
+          item.moved = true;
+          found = true;
+        }
+      if (!found) throw new IOException("Fichier privé introuvable");
+      writeCatalog(secret, entries);
+    } finally {
+      Arrays.fill(secret, (byte) 0);
+    }
+  }
+
+  /** Authenticated export; the caller publishes the output only after this returns. */
+  public void exportTo(MediaEntry entry, OutputStream output, Progress progress) throws Exception {
+    byte[] secret = key();
+    long expected = generation();
+    try (VaultFile.Reader reader = new VaultFile.Reader(file(entry), secret, entry.size)) {
+      reader.copyTo(
+          output,
+          done -> {
+            if (!unlocked() || expected != generation())
+              throw new InterruptedIOException("Export annulé : coffre verrouillé");
+            progress.changed("Restauration", done, entry.size);
+          });
+      if (!unlocked() || expected != generation())
+        throw new InterruptedIOException("Export annulé : coffre verrouillé");
+    } finally {
+      Arrays.fill(secret, (byte) 0);
     }
   }
 

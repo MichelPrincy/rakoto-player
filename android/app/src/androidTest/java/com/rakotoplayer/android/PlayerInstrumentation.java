@@ -126,6 +126,12 @@ public final class PlayerInstrumentation extends Instrumentation {
     require(
         texts == subtitles, name + " : nombre de sous-titres " + texts + " attendu " + subtitles);
     IMedia.Stats s = stats();
+    require(
+        main(
+            () ->
+                MediaNames.readable(service.current.title)
+                    && !service.current.title.startsWith("fd://")),
+        "titre lisible conservé");
     note(
         name
             + " : lecture OK ; vidéo décodée="
@@ -176,6 +182,7 @@ public final class PlayerInstrumentation extends Instrumentation {
           });
       until(() -> main(() -> activity.playbackForTest() != null), "service connecté", 20000);
       service = main(() -> activity.playbackForTest());
+      note(VaultInstrumentationCases.run(this));
       main(
           () -> {
             new Library(getTargetContext())
@@ -326,6 +333,17 @@ public final class PlayerInstrumentation extends Instrumentation {
         until(() -> main(() -> !activity.isInPictureInPictureMode()), "restauration PiP", 10000);
         note("Plein écran et Picture-in-Picture natif vérifiés.");
       }
+      open("mp4-h264.mp4", true, 1, 0);
+      main(
+          () -> {
+            invoke("fullscreen", new Class<?>[] {boolean.class}, true);
+            invoke("navigateBack", new Class<?>[] {});
+            return null;
+          });
+      require(
+          main(() -> !service.player.isPlaying() && service.current == null),
+          "retour arrête la vidéo");
+      note("Retour vidéo : arrêt réel et média libéré.");
       open("musique.flac", false, 1, 0);
       long before = main(() -> service.player.getTime());
       try (android.os.ParcelFileDescriptor ignored =
