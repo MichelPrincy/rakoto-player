@@ -1,7 +1,7 @@
 {
   "name": "rakoto-player",
   "productName": "RAKOTO Player",
-  "version": "2.2.4",
+  "version": "2.3.0",
   "private": true,
   "description": "Lecteur multimédia local avec mini-lecteurs flottants pour Windows",
   "main": "main.cjs",

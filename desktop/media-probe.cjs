@@ -28,7 +28,7 @@ function analyze(file){
       const job=pending;pending=null;clearTimeout(job.timer);
       current.unref();
       // Release the WASM heap when the library is no longer being scanned.
-      idle=setTimeout(()=>{if(worker===current&&!pending){worker=null;current.terminate().catch(()=>{});}},15000);
+      idle=setTimeout(()=>{if(worker===current&&!pending){worker=null;current.terminate().catch(()=>{});}},5000);
       idle.unref();
       if(message.error)job.reject(new Error(message.error));else job.resolve(message.result);
     });

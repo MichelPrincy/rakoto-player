@@ -118,7 +118,7 @@ function buildMenu(ctx) {
       call('Image précédente',()=>ctx.step('backstep'),video)],video),
     group('Avancer / Reculer',[-30,-5,5,30].map(seconds=>call((seconds>0?'+':'')+seconds+' s',
       ()=>ctx.value('seek',Math.max(0,current.time+seconds))))),
-    group('Vitesse',speeds),check('Reprendre à la dernière position',current.resume,()=>ctx.action('resume')),
+    group('Vitesse',speeds),check(current.track?.type==='video'?'Position vidéo non conservée (session temporaire)':'Reprendre à la dernière position',current.track?.type!=='video'&&current.resume,()=>ctx.action('resume'),current.track?.type!=='video'),
     ...(report?.chapters.length?[group('Chapitres',report.chapters.map(chapter=>call(chapter.title,()=>ctx.chapter(chapter.time))))]:[])
   ];
   const settings=[

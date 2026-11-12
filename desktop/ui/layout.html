@@ -1,4 +1,4 @@
-<div class="app" :data-theme="s.theme" :data-motion="s.motion" :class="[{desktop: !floating, floating}, s.mode, {'player-home':s.page==='home'&&!immersive,'native-fullscreen':s.mode==='fullscreen' && s.nativePlayback && s.track?.type==='video'}]">
+<div class="app" :data-theme="s.theme" :data-motion="s.motion" :class="[{desktop: !floating, floating}, s.mode, {'video-stage':s.stage&&s.track?.type==='video','video-list-open':s.videoListOpen,'player-home':s.page==='home'&&!immersive,'native-fullscreen':s.mode==='fullscreen' && s.nativePlayback && s.track?.type==='video'}]">
   <template v-if="floating">
     <section class="float-card drawer-shell" :style="{'--drawer-alpha':Math.min(1,Math.max(.55,s.opacity))}" :class="{expanded:s.mode==='mini', 'is-playing':s.playing}" @contextmenu.prevent="mediaMenu()" aria-label="Tiroir RAKOTO">
       <div v-if="s.mode==='mini'" class="drawer-header">
@@ -44,7 +44,7 @@
         <button class="icon" title="Bibliothèque" @click="go(s.page==='home'?'library':'home')"><glyph name="library"/></button>
         <button class="icon" title="Afficher ou masquer la liste" @click="toggleQueue"><glyph name="queue"/></button>
         <button class="icon" title="Thème clair ou sombre" @click="theme"><glyph :name="s.theme==='dark'?'sun':'moon'"/></button>
-        <button class="icon" title="Tiroir compact" @click="setMode('drawer')"><glyph name="minus"/></button>
+        <button class="icon" title="Réduire" @click="setMode('minimize')"><glyph name="minus"/></button>
         <button class="icon" title="Agrandir ou restaurer" @click="setMode('maximize')"><glyph name="square"/></button>
         <button class="icon quit" title="Fermer RAKOTO" @click="setMode('exit')"><glyph name="close"/></button>
       </div>
@@ -86,7 +86,7 @@
 
       <section v-else-if="s.page==='settings' && !immersive" class="settings-page">
         <div class="settings-card"><h2>Apparence et fenêtres</h2><label>Thème <select v-model="s.theme"><option v-for="(name,id) in themes" :key="id" :value="id">{{ name }}</option></select></label>
-        <label>Animations <select v-model="s.motion"><option value="full">Organiques</option><option value="reduced">Discrètes</option><option value="off">Désactivées</option></select></label>
+        <p>Mode léger : animations décoratives et élasticité supprimées. Les vidéos restent temporaires ; seules la musique et ses playlists sont conservées.</p>
         <label class="setting-toggle">Garder le tiroir au premier plan <input type="checkbox" v-model="s.drawerPinned"></label>
         <label class="setting-toggle">Visualiseur audio du tiroir <input type="checkbox" v-model="s.drawerMeter"></label>
         <label>Opacité du lecteur flottant <input class="range" type="range" min=".55" max="1" step=".05" v-model.number="s.opacity"><span>{{Math.round(s.opacity*100)}} %</span></label>
@@ -100,7 +100,7 @@
           <form v-if="s.createList" class="playlist-form" @submit.prevent="createPlaylist"><input v-model="s.listName" placeholder="Nom de la playlist" maxlength="70" aria-label="Nom de la playlist"><button class="primary">Créer</button></form>
           <div class="playlists"><button v-for="list in s.playlists" :key="list.id" :class="{active:list.id===s.list}" @click="s.list=list.id"><glyph name="playlist"/> {{list.name}} <small>{{list.ids.length}}</small></button></div>
           <div v-if="s.list" class="list-actions"><button @click="s.listEdit=!s.listEdit"><glyph name="plus"/> Ajouter des médias</button><button @click="deletePlaylist"><glyph name="trash"/> Supprimer la playlist</button></div>
-          <div v-if="s.listEdit && s.list" class="playlist-picker"><label v-for="item in s.items" :key="item.id"><input type="checkbox" :checked="selectedList?.ids.includes(item.id)" @change="editPlaylist(item.id,$event.target.checked)"> {{item.title}}</label></div>
+          <div v-if="s.listEdit && s.list" class="playlist-picker"><label v-for="item in s.items.filter(value=>value.type!=='video')" :key="item.id"><input type="checkbox" :checked="selectedList?.ids.includes(item.id)" @change="editPlaylist(item.id,$event.target.checked)"> {{item.title}}</label></div>
         </template>
         <div v-if="visibleItems.length" class="library-list">
           <div class="library-row" v-for="(item,index) in visibleItems" :key="item.id" :class="{active:s.track?.id===item.id}">
@@ -151,23 +151,32 @@
       </template>
     </aside>
 
+    <aside v-if="s.track?.type==='video' && s.stage && s.mode!=='fullscreen' && s.videoListOpen" class="video-session-panel">
+      <header><div><small>SESSION TEMPORAIRE · TRI PAR NOM</small><h2>{{s.videoSession?.folderName || 'Vidéos ouvertes'}}</h2></div><button class="icon" title="Masquer la liste (F6)" @click="toggleQueue"><glyph name="close"/></button></header>
+      <input type="search" v-model="s.videoQuery" @input="resetVideoSearch" placeholder="Rechercher une vidéo…" aria-label="Rechercher dans le dossier">
+      <div class="video-session-list" @scroll="s.videoScroll=$event.target.scrollTop">
+        <div :style="{height:visibleVideos.before+'px'}"></div>
+        <button class="video-session-row" v-for="item in visibleVideos.rows" :key="item.id" :class="{selected:s.track.id===item.id}" @click="playId(item.id)" :title="item.fileName||item.title"><glyph name="video"/><span>{{item.fileName||item.title}}</span><i v-if="s.track.id===item.id">▶</i></button>
+        <div :style="{height:visibleVideos.after+'px'}"></div>
+      </div><p>{{videoItems.length}} vidéo{{videoItems.length>1?'s':''}} · rien n’est sauvegardé</p>
+    </aside>
     <footer class="player">
       <div class="now">
         <button class="cover-button" :disabled="!s.track" title="Afficher la lecture immersive" @click="showStage"><img :src="cover(s.track)" alt=""></button>
         <div class="now-text"><b>{{s.track?.title || 'Aucune lecture'}}</b><small>{{s.track?.artist || 'Ouvrez un fichier local'}}</small></div>
-        <button class="icon" :disabled="!s.track" :class="{blue:s.favorites.includes(s.track?.id)}" @click="favorite(s.track)" title="Favori"><glyph name="heart"/></button>
+        <button v-if="s.track?.type!=='video'" class="icon" :disabled="!s.track" :class="{blue:s.favorites.includes(s.track?.id)}" @click="favorite(s.track)" title="Favori"><glyph name="heart"/></button>
       </div>
       <div class="transport">
-        <div class="transport-buttons"><button class="icon" :class="{blue:s.shuffle}" title="Lecture aléatoire" @click="s.shuffle=!s.shuffle"><glyph name="shuffle"/></button>
+        <div class="transport-buttons"><button class="icon" :class="{blue:shuffleOn}" title="Lecture aléatoire" @click="toggleShuffle"><glyph name="shuffle"/></button>
           <button class="icon" @click="previous" title="Précédent"><glyph name="previous"/></button>
           <button class="icon primary round play" @click="toggle" :aria-label="s.playing?'Pause':'Lire'"><glyph :name="s.playing?'pause':'play'"/></button>
           <button class="icon" @click="next" title="Suivant"><glyph name="next"/></button>
-          <button class="icon repeat" :class="{blue:s.repeat!=='off'}" :title="'Répétition : '+repeatLabel" @click="repeat"><glyph name="repeat"/><sup v-if="s.repeat==='one'">1</sup></button></div>
+          <button class="icon repeat" :class="{blue:repeatMode!=='off'}" :title="'Répétition : '+repeatLabel" @click="repeat"><glyph name="repeat"/><sup v-if="repeatMode==='one'">1</sup></button></div>
         <div class="timeline"><span>{{clock(s.time)}}</span><input class="range" type="range" min="0" :max="s.duration || 1" step=".1" :value="s.time" :style="progress(s.time,s.duration)" @input="seek(+$event.target.value)" aria-label="Position"><span>{{clock(s.duration)}}</span></div>
       </div>
       <div class="player-tools">
-        <button class="icon" :class="{blue:s.lyrics}" title="Paroles" @click="toggleLyrics"><glyph name="mic"/></button>
-        <button class="icon" :class="{blue:s.queueOpen}" title="File d’attente" @click="toggleQueue"><glyph name="queue"/></button>
+        <button v-if="s.track?.type!=='video'" class="icon" :class="{blue:s.lyrics}" title="Paroles" @click="toggleLyrics"><glyph name="mic"/></button>
+        <button class="icon" :class="{blue:s.track?.type==='video'?s.videoListOpen:s.queueOpen}" :title="s.track?.type==='video'?'Liste du dossier (F6)':'File d’attente (F6)'" @click="toggleQueue"><glyph name="queue"/></button>
         <button class="icon" :disabled="!s.track" title="Options média" @click="mediaMenu()"><glyph name="settings"/></button>
         <button class="icon" title="Mini-lecteur (Ctrl+M)" @click="setMode('mini')"><glyph name="mini"/></button>
         <button class="icon" title="Plein écran" @click="full"><glyph name="expand"/></button>

@@ -1,7 +1,7 @@
 <!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Commandes vidéo RAKOTO</title><link rel="stylesheet" href="/media-windows.css"><script src="/overlay.js" defer></script></head>
+<title>Commandes vidéo RAKOTO</title><link rel="stylesheet" href="/media-windows.css"><script type="module" src="/overlay.js"></script></head>
 <body class="overlay">
 <main id="surface" aria-label="Vidéo RAKOTO">
   <button id="back" class="stage-action" title="Retour à la bibliothèque" aria-label="Retour à la bibliothèque">‹ Bibliothèque</button>
@@ -18,11 +18,18 @@
         <button id="audio" data-menu="audio" title="Pistes audio">Audio</button>
         <button id="subtitle" data-menu="subtitle" title="Sous-titres">CC</button>
         <button id="speed" data-menu="speed" title="Vitesse de lecture">1×</button>
+        <button id="list-toggle" title="Liste du dossier (F6)" aria-label="Liste du dossier" aria-expanded="false" aria-controls="session-list">☷</button>
         <button data-menu="video" title="Réglages vidéo" aria-label="Réglages vidéo">⚙</button>
         <button id="float" data-command="video" title="Vidéo flottante" aria-label="Vidéo flottante">▣</button>
         <button id="full" data-command="fullscreen" title="Plein écran" aria-label="Plein écran">⛶</button>
       </div>
     </div>
   </div>
+  <aside id="session-list" hidden aria-label="Vidéos du dossier">
+    <header><div><small>SESSION TEMPORAIRE · TRI PAR NOM</small><h2 id="folder-name">Vidéos</h2></div><button id="list-close" aria-label="Fermer la liste" title="Fermer (F6)">×</button></header>
+    <input type="search" id="list-search" placeholder="Rechercher une vidéo…" aria-label="Rechercher dans le dossier">
+    <div id="video-items" aria-label="Vidéos disponibles"></div>
+    <p id="list-count"></p>
+  </aside>
 </main>
 </body></html>

@@ -8,7 +8,7 @@ const dist=path.join(root,'dist');
 const output=path.join(dist,'RAKOTO Player');
 const lock=require('../package-lock.json');
 const sources=['package.json','main.cjs','preload.cjs','advanced.cjs','native-player.cjs','media-probe.cjs','media-menu.cjs',
-  'win-video.cjs','media-analyzer.cjs','native','ui','tools/verify.cjs','tools/verify-advanced.cjs','tools/verify-native.cjs','tools/test.webm'];
+  'win-video.cjs','media-analyzer.cjs','video-session.cjs','native','ui','tools/verify.cjs','tools/verify-advanced.cjs','tools/verify-native.cjs','tools/verify-session.cjs','tools/test.webm'];
 
 function dependencies(){
   const found=new Set();

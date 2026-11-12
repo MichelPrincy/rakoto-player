@@ -8,11 +8,12 @@ const subtitleExtensions=['srt','ass','ssa','vtt','sub','idx'];
 const number = value => typeof value==='number'&&Number.isFinite(value);
 
 function installAdvanced({ ipcMain, Menu, dialog, app, makeWindow, makeVideoHost, base, windows, requestFrom, files, catalog,
-  store, settings, command, changeWindow, lastState, quiet, meter }) {
+  store, settings, command, changeWindow, lastState, quiet, meter,ensureAnalyzed,videoSession=()=>null }) {
   let host, overlay, details, player, opening, rect, updateTimer, positionTimer, popup;
   let type, generation=0;
   let lastUpdate=null, videoHandle=0, shuttingDown=false;
   const pending = new Map();
+  let releaseTimer;
   const mediaSettings=()=>{
     settings.media ||= {};
     settings.media.positions ||= {};
@@ -38,7 +39,7 @@ function installAdvanced({ ipcMain, Menu, dialog, app, makeWindow, makeVideoHost
   }
   function savePosition() {
     const current=lastUpdate;
-    if(!current?.id || !current.loaded) return;
+    if(!current?.id || !current.loaded || files.get(current.id)?.persistent!==true) return;
     const time=current.properties['time-pos'], length=current.properties.duration;
     if(!number(time)||time<2||!number(length)||time>length-2) return;
     const positions=mediaSettings().positions;
@@ -52,8 +53,7 @@ function installAdvanced({ ipcMain, Menu, dialog, app, makeWindow, makeVideoHost
     if(changed){hideVideo(videoHandle,player?.child?.pid);videoHandle=nextHandle;}
     lastUpdate=value;
     if(value.event==='eof') {
-      delete mediaSettings().positions[value.id];
-      store();
+      if(files.get(value.id)?.persistent===true){delete mediaSettings().positions[value.id];store();}
     }
     if(changed || value.event==='loaded' || value.event==='stopped' || value.event==='error' || value.event==='eof') {
       flush();
@@ -68,7 +68,7 @@ function installAdvanced({ ipcMain, Menu, dialog, app, makeWindow, makeVideoHost
     const owner=inFloat?floating:main;
     const show=type==='video'&&lastUpdate?.loaded&&owner?.isVisible()&&!owner.isMinimized()&&
       (inFloat || (mode==='normal' && rect?.width>30 && rect?.height>30));
-    if(!show){hideVideo(videoHandle,player?.child?.pid);overlay.hide();host.hide();return;}
+    if(!show){hideVideo(videoHandle,player?.child?.pid);overlay.hide();host.hide();publish();return;}
     if(host.getParentWindow()!==owner) host.setParentWindow(owner);
     const parent=owner.getContentBounds();
     const local=inFloat?{x:5,y:5,width:parent.width-10,height:parent.height-10}:main.isFullScreen()
@@ -92,8 +92,9 @@ function installAdvanced({ ipcMain, Menu, dialog, app, makeWindow, makeVideoHost
       host=makeVideoHost({parent:windows().main,frame:false,focusable:false,resizable:false,skipTaskbar:true,
         width:200,height:100,backgroundColor:'#000000'});
       overlay=makeWindow({parent:host,frame:false,transparent:true,resizable:false,skipTaskbar:true,
-        width:200,height:100,backgroundColor:'#00000000',hasShadow:false});
+        width:200,height:100,backgroundColor:'#00000000',hasShadow:false,webPreferences:{backgroundThrottling:!quiet,offscreen:Boolean(quiet)}});
       await overlay.loadURL(base+'/overlay.html');
+      send(overlay,'video:session',videoSession());
       player=new NativePlayer({muted:quiet,decoder:mediaSettings().decoder});
 
       player.on('update',onUpdate);
@@ -103,16 +104,19 @@ function installAdvanced({ ipcMain, Menu, dialog, app, makeWindow, makeVideoHost
   }
 
   async function open(id,options={}) {
+    const token=++generation;
+    clearTimeout(releaseTimer);
+    if(ensureAnalyzed)await ensureAnalyzed(id);
+    if(token!==generation)return false;
     const file=files.get(id), item=catalog.get(id);
     if(!file||!item||!file.probe) throw new Error('Fichier non reconnu par l’analyse média.');
-    const token=++generation;
     savePosition();
     await prepare();
     if(token!==generation)return false;
     type=item.type;
 
     const saved=mediaSettings();
-    const request={time:options.time || (options.resume && saved.positions[id]) || 0,paused:options.paused,
+    const request={time:options.time || (file.persistent===true&&options.resume && saved.positions[id]) || 0,paused:options.paused,
       aid:saved.defaults[id],sid:'auto'};
     // Serialize loads on the same mpv core without letting a delayed command supersede a new selection.
     const previous=pending.get('open')||Promise.resolve();
@@ -146,6 +150,15 @@ function installAdvanced({ ipcMain, Menu, dialog, app, makeWindow, makeVideoHost
     if(player?.socket && (player.loaded || type)) await player.transport('stop');
     type=null;
     place();
+    const stoppedGeneration=generation;
+    clearTimeout(releaseTimer);
+    releaseTimer=setTimeout(()=>{
+      if(shuttingDown||generation!==stoppedGeneration||player?.loaded)return;
+      hideVideo(videoHandle,player?.child?.pid);videoHandle=0;
+      player?.close();player=null;lastUpdate=null;
+      if(overlay&&!overlay.isDestroyed())overlay.destroy();overlay=null;
+      if(host&&!host.isDestroyed())host.destroy();host=null;
+    },1500);
   }
 
   async function subtitle(owner) {
@@ -248,14 +261,15 @@ function installAdvanced({ ipcMain, Menu, dialog, app, makeWindow, makeVideoHost
   ipcMain.handle('media:release',event=>requestFrom(event,windows().main)?stop():false);
   ipcMain.handle('media:transport',(event,action,value)=>{
     if(!requestFrom(event,windows().main)||!player)return false;
-    if(action==='stop')savePosition();
+    if(action==='stop')return stop();
     return player.transport(action,value);
   });
   ipcMain.handle('media:select',(event,kind,id)=>valid(event)&&player?.loaded&&['aid','sid'].includes(kind)?player.set(kind,id):false);
   ipcMain.handle('media:menu',(event,kind)=>valid(event)?menuCommand([overlay,windows().floating,windows().main]
     .find(win=>requestFrom(event,win)),kind):false);
   ipcMain.handle('media:command',(event,action,value)=>{
-    if(!valid(event)||!['toggle','next','previous','seek','volume','speed','fullscreen','normal','video','mini','library'].includes(action))return false;
+    if(!valid(event)||!['toggle','next','previous','seek','volume','speed','fullscreen','normal','video','mini','library','queue','playVideo','mute'].includes(action))return false;
+    if(action==='playVideo'&&(!videoSession()?.items.some(item=>item.id===value)||typeof value!=='string'))return false;
     if(['fullscreen','normal','video','mini'].includes(action))return changeWindow(action,1);
     if((action==='seek'||action==='volume'||action==='speed')&&!number(value))return false;
     return command(action,value);
@@ -291,7 +305,7 @@ function installAdvanced({ ipcMain, Menu, dialog, app, makeWindow, makeVideoHost
   positionTimer=setInterval(savePosition,12000);
   return {watchWindow,detachWindow,place,publish,poster,savePosition,popup:menuCommand,shutdown(){
     shuttingDown=true;
-    clearTimeout(updateTimer);clearInterval(positionTimer);
+    clearTimeout(updateTimer);clearInterval(positionTimer);clearTimeout(releaseTimer);
     if(popup?.owner&&!popup.owner.isDestroyed())popup.menu.closePopup(popup.owner);
     player?.close();
     if(overlay&&!overlay.isDestroyed())overlay.destroy();

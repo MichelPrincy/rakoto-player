@@ -3,9 +3,9 @@ const fs = require('node:fs/promises');
 const { createReadStream } = require('node:fs');
 const { Readable } = require('node:stream');
 const path = require('node:path');
-const { createHash } = require('node:crypto');
 const { probe, types } = require('./media-probe.cjs');
 const { installAdvanced } = require('./advanced.cjs');
+const {fileId,folderSession,persistentState}=require('./video-session.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'rakoto', privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true
@@ -15,7 +15,8 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.setName('RAKOTO Player');
 const demo = process.argv.includes('--demo');
 const advancedVerify = process.argv.includes('--verify-advanced');
-const verify = process.argv.includes('--verify') || advancedVerify;
+const sessionVerify=process.argv.includes('--verify-session');
+const verify = process.argv.includes('--verify') || advancedVerify || sessionVerify;
 if (verify) {
   app.commandLine.appendSwitch('mute-audio');
   app.setPath('userData', path.join(app.getPath('temp'), 'rakoto-verify-' + process.pid));
@@ -25,39 +26,16 @@ const base = 'rakoto://app';
 const files = new Map();
 const catalog = new Map();
 const assets = new Set(['index.html', 'style.css', 'desktop.css', 'logo.svg', 'organic.css', 'organic.js', 'hautes-terres.svg', 'vue.js', 'generated.js', 'renderer.js', 'library.js', 'audio.js', 'logo.png', 'overlay.html', 'overlay.js', 'media-windows.css', 'media-dialog.html', 'media-dialog.js']);
-const metadata = import('music-metadata');
+assets.add('lite.css');assets.add('video-list.js');
+let metadata;
 const icon = path.join(ui, 'rakoto.ico');
 let main, floating, floatRevision=0, closing = false, mode = 'normal', lastState;
 const windowDrags=new Map();
+let videoSession=null,openingRevision=0;
+const ephemeralIds=new Set();
 let skipDrawerMinimize=false, posterId, poster, posterAttempts=0, posterNext=0, posterBusy=false;
 const drawerMode=()=>['drawer','mini'].includes(mode);
 const drawerPinned=()=>memory.drawerPinned!==false;
-const emitMotion=(win,value)=>{
-  if(win&&!win.isDestroyed()&&lastState?.motion!=='off')win.webContents.send('window:motion',value);
-};
-function watchMotion(win){
-  let previous=win.getBounds(), timer;
-  const schedule=()=>{
-    if(timer)return;
-    timer=setTimeout(()=>{
-      timer=null;
-      if(win.isDestroyed()||windowDrags.has(win.webContents.id))return;
-      const bounds=win.getBounds();
-      const movement={x:Math.max(-17,Math.min(17,previous.x-bounds.x)),
-        y:Math.max(-17,Math.min(17,previous.y-bounds.y)),
-        scale:Math.max(-1,Math.min(1,(bounds.width-previous.width+bounds.height-previous.height)/110))};
-      previous=bounds;
-      if(movement.x||movement.y||movement.scale)emitMotion(win,movement);
-    },32);
-  };
-  win.on('move',schedule);win.on('resize',schedule);
-  win.on('will-resize',(_event,bounds)=>{
-    emitMotion(win,{scale:Math.max(-1,Math.min(1,(bounds.width-previous.width+bounds.height-previous.height)/90))});
-    previous=bounds;
-  });
-  const id=win.webContents.id;
-  win.on('closed',()=>{clearTimeout(timer);windowDrags.delete(id);});
-}
 
 function forwardMeter(levels,native,id){
   if(!drawerMode()||!floating?.isVisible()||lastState?.drawerMeter===false||!lastState?.playing||lastState.muted||
@@ -102,9 +80,12 @@ async function showStartup(args){
   if(args.includes('--settings'))main.webContents.send('player:command',{action:'settings'});
   const paths=args.filter(argument=>path.isAbsolute(argument));
   if(paths.length){
-    const items=await registerList(paths);
-    if(items.length){await store();main.webContents.send('library:opened',items);}
+    try{
+      const result=await openPaths(paths);
+      if(result.items.length)main.webContents.send('library:opened',result);
+    }catch(error){main.webContents.send('player:command',{action:'openError',value:error.message});}
   }
+  if(sessionVerify)return;
   if(mode!=='normal'||main.isMinimized())await changeWindow('normal');
   else {main.show();main.focus();}
 }
@@ -113,7 +94,8 @@ const requestFrom = (event, win) => Boolean(win && !win.isDestroyed() &&
   event.senderFrame.url.startsWith(base + '/'));
 
 function store() {
-  const data = JSON.stringify({ memory, settings, paths: Array.from(files.values(), item => item.path) });
+  const saved=persistentState(memory,settings,ephemeralIds);
+  const data = JSON.stringify({...saved,libraryVersion:2,paths:Array.from(files.values()).filter(item=>item.persistent!==false).map(item=>item.path)});
   const next = stateFile + '.tmp';
   writeChain = writeChain.catch(() => {}).then(async () => {
     await fs.writeFile(next, data);
@@ -128,21 +110,24 @@ async function register(file, enrich = true) {
 
   const stat = await fs.stat(file).catch(() => null);
   if (!stat?.isFile()) return null;
-  const id = createHash('sha256').update(path.normalize(file).toLowerCase()).digest('hex').slice(0, 32);
-  if (catalog.has(id)) return catalog.get(id);
+  const id = fileId(file);
+  if(catalog.has(id)&&files.get(id)?.probe&&files.get(id)?.size===stat.size&&files.get(id)?.mtime===stat.mtimeMs)return catalog.get(id);
   const name = path.basename(file, path.extname(file));
   const [artist, title] = name.includes(' - ') ? name.split(/ - (.+)/) : ['', name];
   const analysis = await probe(file).catch(() => null);
   if (!analysis) return null;
   const mime = analysis.webMime || types[ext] || 'application/octet-stream';
-  const record = { path: file, mime, probe: analysis };
+  const isVideo=analysis.video.length>0;
+  const record = { path: file, mime, probe: analysis,size:stat.size,mtime:stat.mtimeMs,persistent:!isVideo&&!ephemeralIds.has(id) };
+  if(isVideo)ephemeralIds.add(id);
   files.set(id, record);
   const item = { id, title, artist: artist || 'Artiste inconnu', album: '', genre: '',
     type: analysis.video.length ? 'video' : 'music', native:analysis.native, url: '/media/' + id,
     download: isUnder(file, app.getPath('downloads')), ext: ext.toUpperCase() };
+  if(isVideo)Object.assign(item,{title:path.basename(file),fileName:path.basename(file),artist:path.basename(path.dirname(file))});
   if (enrich && item.type === 'music') {
     try {
-      const info = await (await metadata).parseFile(file, { duration: false });
+      const info = await (await (metadata ||= import('music-metadata'))).parseFile(file, { duration: false });
       const tags = info.common;
       Object.assign(item, { title: tags.title || title, artist: tags.artist || item.artist,
         album: tags.album || '', genre: tags.genre?.[0] || '',
@@ -170,6 +155,44 @@ async function registerList(paths) {
     result.push(...batch.filter(Boolean));
   }
   return result;
+}
+
+async function describeVideo(file){
+  const id=fileId(file);
+  ephemeralIds.add(id);
+  const existing=catalog.get(id);
+  if(existing){files.get(id).persistent=false;return existing;}
+  const ext=path.extname(file).slice(1).toLowerCase();
+  const item={id,title:path.basename(file),fileName:path.basename(file),artist:path.basename(path.dirname(file)),album:'',genre:'',
+    type:'video',native:true,url:'/media/'+id,ext:ext.toUpperCase()};
+  files.set(id,{path:file,mime:types[ext]||'application/octet-stream',probe:null,persistent:false});
+  catalog.set(id,item);return item;
+}
+async function ensureAnalyzed(id){
+  const record=files.get(id);if(!record)return null;
+  const item=await register(record.path);
+  if(!item)throw new Error('Ce fichier est inaccessible, endommagé ou n’est plus un média reconnu.');
+  if(item&&!main?.isDestroyed())main.webContents.send('library:updated',item);
+  return item;
+}
+async function openPaths(paths){
+  const revision=++openingRevision;
+  const picked=await registerList(paths);
+  if(revision!==openingRevision)return {items:[]};
+  if(paths.length&&!picked.length)throw new Error('Aucun média lisible : le fichier est inaccessible, endommagé ou non reconnu.');
+  const first=picked.find(item=>item.type==='video');
+  if(!first){await store();return {items:picked,selectedId:picked[0]?.id};}
+  const next=await folderSession({item:first,path:files.get(first.id).path},file=>revision===openingRevision?describeVideo(file):null);
+  if(revision!==openingRevision)return {items:[]};
+  videoSession=next;
+  const keep=new Set(next.items.map(item=>item.id));
+  for(const [id,record] of files)if(record.persistent===false&&!keep.has(id)){files.delete(id);catalog.delete(id);}
+  const cleaned=persistentState(memory,settings,ephemeralIds);memory=cleaned.memory;
+  if(settings.media){settings.media.positions=cleaned.settings.media.positions;settings.media.defaults=cleaned.settings.media.defaults;}
+  ephemeralIds.clear();for(const id of keep)ephemeralIds.add(id);
+  if(advanced?.overlay&&!advanced.overlay.isDestroyed())advanced.overlay.webContents.send('video:session',videoSession);
+  await store();
+  return {items:[...picked.filter(item=>item.type!=='video'),...next.items],selectedId:first.id,session:next};
 }
 
 async function streamFile(request, file, mime) {
@@ -201,6 +224,7 @@ function makeWindow({ webPreferences = {}, ...options }) {
       sandbox: true, contextIsolation: true, backgroundThrottling: true, ...webPreferences },
     ...options
   });
+  const windowId=win.webContents.id;win.on('closed',()=>windowDrags.delete(windowId));
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());
   return win;
@@ -243,6 +267,7 @@ async function changeWindow(kind, opacity) {
     return;
   }
   if (kind === 'maximize') { main.isMaximized() ? main.unmaximize() : main.maximize(); return; }
+  if(kind==='minimize'){if(lastState?.track?.type==='video')main.minimize();else await changeWindow('drawer');return;}
   if (kind === 'exit') { app.quit(); return; }
   if (kind === 'hide-drawer') {
     await changeWindow('normal');
@@ -261,7 +286,6 @@ async function changeWindow(kind, opacity) {
     if(main.isMinimized())main.restore();
     main.show();
     main.focus();
-    emitMotion(main,{scale:1});
     sendMode();
     advanced?.place();
     if(old&&!old.isDestroyed()){
@@ -280,7 +304,6 @@ async function changeWindow(kind, opacity) {
   // Each Windows layered surface keeps its original size and is presented only after its first paint.
   const next=makeWindow({...geometry(kind,settings[kind]||fallback),frame:false,transparent:true,
     resizable:false,alwaysOnTop:drawerPinned(),skipTaskbar:true,backgroundColor:'#00000000'});
-  watchMotion(next);
   advanced?.watchWindow(next);
   next.on('system-context-menu',event=>{
     event.preventDefault();
@@ -318,7 +341,6 @@ async function changeWindow(kind, opacity) {
   sendMode();
   if (lastState) floating.webContents.send('player:state', lastState);
   floating.showInactive();
-  emitMotion(floating,{y:kind==='drawer'?5:-5,scale:kind==='mini'?1:-1});
   if(poster)poster.sent=false;
   refreshPoster();
   main.hide();
@@ -352,20 +374,17 @@ function installIpc() {
 
   ipcMain.handle('library:load', event => requestFrom(event, main)
     ? { items: [...catalog.values()], memory } : null);
+  ipcMain.handle('video:session',event=>requestFrom(event,main)||requestFrom(event,advanced?.overlay)?videoSession:null);
   ipcMain.handle('library:import', async event => {
     if (!requestFrom(event, main)) return [];
     const picked = await dialog.showOpenDialog(main, { title: 'Importer des médias',
       properties: ['openFile', 'multiSelections'], filters: [{ name: 'Audio et vidéo', extensions: Object.keys(types) }, { name:'Tous les fichiers', extensions:['*'] }] });
     if (picked.canceled) return [];
-    const items = await registerList(picked.filePaths);
-    await store();
-    return items;
+    return openPaths(picked.filePaths);
   });
   ipcMain.handle('library:drop', async (event, paths) => {
     if (!requestFrom(event, main) || !Array.isArray(paths)) return [];
-    const items = await registerList(paths);
-    await store();
-    return items;
+    return openPaths(paths);
   });
   ipcMain.handle('library:captions', async (event, id, ext, pick) => {
     if (!requestFrom(event, main) || !['srt', 'lrc'].includes(ext) || !files.has(id)) return '';
@@ -384,7 +403,7 @@ function installIpc() {
   ipcMain.on('library:save', (event, value) => {
     if (!requestFrom(event, main) || !value || typeof value !== 'object') return;
     const pinned=drawerPinned();
-    memory = value;
+    memory = persistentState(value,settings,ephemeralIds).memory;
     if(pinned!==drawerPinned()&&floating?.isVisible()){
       floating.setAlwaysOnTop(drawerPinned());
       advanced?.place();
@@ -418,7 +437,13 @@ app.whenReady().then(async () => {
   const saved = await fs.readFile(stateFile, 'utf8').then(JSON.parse).catch(() => ({}));
   memory = saved.memory || {};
   settings = saved.settings || {};
-  await registerList(Array.isArray(saved.paths) ? saved.paths : []);
+  const savedPaths=Array.isArray(saved.paths)?saved.paths:[];
+  // One-time migration analyses legacy paths once, preserving audio-only video containers.
+  // Future saves contain music paths only; no video folder is restored at startup.
+  await registerList(savedPaths.filter(file=>typeof file==='string'));
+  for(const [id,record] of files)if(record.persistent===false){files.delete(id);catalog.delete(id);}
+  const migrated=persistentState(memory,settings,ephemeralIds);memory=migrated.memory;settings=migrated.settings;
+  await store();
   protocol.handle('rakoto', async request => {
     const url = new URL(request.url);
     if (url.host !== 'app') return new Response(null, { status: 404 });
@@ -444,14 +469,13 @@ app.whenReady().then(async () => {
   advanced=installAdvanced({
     ipcMain,Menu,dialog,app,makeWindow,makeVideoHost:options=>new BaseWindow({show:false,...options}),base,windows:()=>({main,floating,mode,pinned:drawerPinned()}),requestFrom,files,catalog,store,settings,
     command:(action,value)=>main.webContents.send('player:command',{action,value}),
-    changeWindow,lastState:()=>lastState,quiet:verify,
+    changeWindow,lastState:()=>lastState,quiet:verify,ensureAnalyzed,videoSession:()=>videoSession,
     meter:(levels,id)=>forwardMeter(levels,true,id)
   });
   advanced.watchWindow(main);
-  watchMotion(main);
   main.on('minimize',()=>{
     if(skipDrawerMinimize){skipDrawerMinimize=false;return;}
-    if(!closing&&mode==='normal')changeWindow('drawer',lastState?.opacity).catch(console.error);
+    if(!closing&&mode==='normal'&&lastState?.track?.type!=='video')changeWindow('drawer',lastState?.opacity).catch(console.error);
   });
   main.on('close', () => {
     closing=true;
@@ -462,8 +486,9 @@ app.whenReady().then(async () => {
   main.on('closed', () => { if (!verify) app.quit(); });
   main.on('enter-full-screen', () => main.webContents.send('window:changed', 'fullscreen'));
   main.on('leave-full-screen', sendMode);
-  await main.loadURL(base + '/' + (verify ? '?demo=1&verify=1' : demo ? '?demo=1' : ''));
-  if (advancedVerify) await require('./tools/verify-advanced.cjs')({main,app,register,probe,advanced,changeWindow,current:()=>({mode,floating,lastState})});
+  await main.loadURL(base + '/' + (sessionVerify?'?verify=1':verify ? '?demo=1&verify=1' : demo ? '?demo=1' : ''));
+  if(sessionVerify)await require('./tools/verify-session.cjs')({main,app,showStartup,openPaths,advanced,changeWindow,store,stateFile,files,catalog,session:()=>videoSession});
+  else if (advancedVerify) await require('./tools/verify-advanced.cjs')({main,app,register,probe,advanced,changeWindow,current:()=>({mode,floating,lastState})});
   else if (verify) await require('./tools/verify.cjs')({ main, changeWindow, current: () => ({ mode, floating, lastState }),
     register, base, app, advanced });
   else await showStartup([...startup,...waiting]);
