@@ -1,20 +1,20 @@
 {
-  "version": "2.3.1",
-  "publishedAt": "2026-11-12T17:15:46.552Z",
+  "version": "2.3.2",
+  "publishedAt": "2026-11-12T18:15:34.526Z",
   "platform": "Windows 10 / 11 x64",
   "offline": {
-    "file": "RAKOTO-Player-2.3.1-Offline-x64.exe",
-    "bytes": 141782511,
-    "sha256": "c12402913cf4aa0327112f30de42edb19ba301a0e1623f43d36eda6ff9a7505e",
-    "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-2.3.1-Offline-x64.exe",
-    "fallbackUrl": "https://github.com/MichelPrincy/rakoto-player/releases/download/windows-v2.3.1/RAKOTO-Player-2.3.1-Offline-x64.exe"
+    "file": "RAKOTO-Player-2.3.2-Offline-x64.exe",
+    "bytes": 141825181,
+    "sha256": "12267568c63f8f7e0f9c841820a58f02060b231c8ed3cfc44938f6195f65a90b",
+    "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-2.3.2-Offline-x64.exe",
+    "fallbackUrl": "https://github.com/MichelPrincy/rakoto-player/releases/download/windows-v2.3.2/RAKOTO-Player-2.3.2-Offline-x64.exe"
   },
   "online": {
-    "file": "RAKOTO-Player-2.3.1-Online-x64.exe",
-    "bytes": 247803,
-    "sha256": "5f4ae7aa3f86e97a6510662385d04f61df1c13456b9c05388712191eaab0589f",
-    "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-2.3.1-Online-x64.exe",
-    "fallbackUrl": "https://github.com/MichelPrincy/rakoto-player/releases/download/windows-v2.3.1/RAKOTO-Player-2.3.1-Online-x64.exe"
+    "file": "RAKOTO-Player-2.3.2-Online-x64.exe",
+    "bytes": 247807,
+    "sha256": "9877109ef62bc0c589e3a9230da73359e2d753cf408c4ce7d55a171c467cb0aa",
+    "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-2.3.2-Online-x64.exe",
+    "fallbackUrl": "https://github.com/MichelPrincy/rakoto-player/releases/download/windows-v2.3.2/RAKOTO-Player-2.3.2-Online-x64.exe"
   },
   "android": {
     "version": "1.0.0-beta.4",
