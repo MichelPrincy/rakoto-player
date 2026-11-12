@@ -1,4 +1,4 @@
-import {build} from 'esbuild';
+import {build,transform} from 'esbuild';
 import {readFile,mkdir,writeFile,cp} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -50,7 +50,8 @@ await mkdir(output,{recursive:true});
 await writeFile(path.join(output,'index.html'),html);
 for(const file of ['robots.txt','sitemap.xml'])await cp(path.join(root,'src',file),path.join(output,file));
 await cp(path.join(root,'assets'),path.join(output,'assets'),{recursive:true});
-await cp(path.join(root,'src/style.css'),path.join(output,'style.css'));
+const styles=await Promise.all(['style.css','camp-design.css'].map(file=>readFile(path.join(root,'src',file),'utf8')));
+await writeFile(path.join(output,'style.css'),(await transform(styles.join('\n'),{loader:'css',minify:true,target:'es2022'})).code);
 await writeFile(path.join(output,'release.json'),JSON.stringify(manifest,null,2)+'\n');
 await writeFile(path.join(output,'.nojekyll'),'');
 await build({entryPoints:[path.join(root,'src/client.ts')],outfile:path.join(output,'app.js'),bundle:true,minify:true,target:'es2022',format:'iife'});

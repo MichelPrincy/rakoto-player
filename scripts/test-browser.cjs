@@ -15,8 +15,8 @@ app.whenReady().then(async()=>{
  const check=(condition,name,detail)=>{checks.push({name,pass:!!condition,...(detail?{detail}: {})});if(!condition)throw new Error(name+': '+JSON.stringify(detail||''))};
  const snapshot=async(name)=>{const image=await win.webContents.capturePage();await fs.writeFile(path.join(output,name+'.png'),image.toPNG())};
  try{
-  await win.webContents.session.clearStorageData();
-  await win.loadURL(base);
+  await win.webContents.session.clearCache();await win.webContents.session.clearStorageData();
+  await win.loadURL(base);await run("document.fonts.ready");
   await wait(1500);
   check(await run('document.documentElement.lang==="fr"&&!document.documentElement.classList.contains("sound-active")'),'French first load and silent audio');
   check(await run('document.querySelectorAll("h1").length===1&&document.querySelector("script[data-software]")!==null'),'One H1 and SoftwareApplication metadata');
@@ -32,11 +32,11 @@ app.whenReady().then(async()=>{
   await win.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await run('scrollTo(0,0)');await wait(150);await snapshot('mobile');
   await run(`document.querySelector('[data-mobile-toggle]').click()`);check(await run(`document.querySelector('#navigation').classList.contains('open')`),'Mobile menu opens');
   await run(`document.querySelector('#navigation a[href="#fonctionnalites"]').click()`);await wait(200);check(await run(`!document.querySelector('#navigation').classList.contains('open')`),'Anchor closes mobile menu');
-  await run(`document.querySelector('[data-language="mg"]').click()`);check(await run(`document.documentElement.lang==='mg'&&document.querySelector('h1').textContent.includes('Ny musique-nao')&&document.title.includes('maimaim-poana')`),'Malagasy title, hero and metadata');
+  await run(`document.querySelector('[data-language="mg"]').click()`);check(await run(`document.documentElement.lang==='mg'&&document.querySelector('h1').textContent.includes('Ny player-nao')&&document.title.includes('maimaim-poana')`),'Malagasy title, hero and metadata');
   check(await run(`localStorage.getItem('rakoto-language')==='mg'&&location.search==='?lang=mg'`),'Language choice persists and is shareable');
   check(await run(`Array.from(document.querySelectorAll('[data-i18n]')).every(e=>!e.textContent.includes('undefined')&&!e.textContent.includes('{{'))`),'No missing translated copy');
   await run(`scrollTo(0,0)`);await wait(250);await snapshot('mobile-malagasy');
-  await win.loadURL(base);await wait(300);check(await run(`document.documentElement.lang==='mg'`),'Malagasy survives reload without query');
+  await win.loadURL(base);await run("document.fonts.ready");await wait(300);check(await run(`document.documentElement.lang==='mg'`),'Malagasy survives reload without query');
   await run(`document.querySelector('[data-language="fr"]').click();document.querySelector('[data-motion-toggle]').click()`);check(await run(`document.documentElement.dataset.effects==='lite'`),'Manual lightweight mode');
   await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});await wait(100);
   check(await run(`document.documentElement.dataset.effects==='lite'&&getComputedStyle(document.documentElement).scrollBehavior==='auto'`),'Reduced motion preference respected');
@@ -49,11 +49,11 @@ app.whenReady().then(async()=>{
   check(await run(`document.querySelector('[data-sound-toggle]').getAttribute('aria-pressed')==='true'&&document.querySelector('[data-visualizer-label]').textContent.includes('Analyse en direct')`),'Explicit sound activation and real analyser label');
   const signalBefore=await run(`document.querySelector('#spectrum').toDataURL()`);await wait(250);
   check(signalBefore!==await run(`document.querySelector('#spectrum').toDataURL()`),'Canvas changes with the actual generated audio signal');
-  await win.loadURL(base);await wait(150);
+  await win.loadURL(base);await run("document.fonts.ready");await wait(150);
   check(await run(`!document.documentElement.classList.contains('sound-active')&&localStorage.getItem('rakoto-sound')==='on'`),'Remembered sound opt-in never bypasses fresh user gesture');
   await run(`document.querySelector('[data-sound-toggle]').click()`);await wait(150);
   await run(`document.querySelector('[data-sound-toggle]').click()`);await wait(100);check(await run(`!document.documentElement.classList.contains('sound-active')`),'Sound mute control');
-  await win.loadURL(base);await wait(200);check(await run(`!document.documentElement.classList.contains('sound-active')`),'Audio never autoplays after reload');
+  await win.loadURL(base);await run("document.fonts.ready");await wait(200);check(await run(`!document.documentElement.classList.contains('sound-active')`),'Audio never autoplays after reload');
   check(await run(`document.querySelector('a[href="tel:+261382994693"]')&&document.querySelector('a[href="https://wa.me/261382994693"]')&&document.querySelector('a[href="https://www.linkedin.com/in/princy-rakotozafimalala-ba1022327/"]')`),'Owner contact links');
   await run(`Object.defineProperty(navigator,'share',{configurable:true,value:async data=>{window.__sharePayload=data}});document.querySelector('[data-share]').click()`);await wait(50);
   check(await run(`window.__sharePayload?.url==='https://michelprincy.github.io/rakoto-player/'`),'Share button passes the official URL without sending a message');

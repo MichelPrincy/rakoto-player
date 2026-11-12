@@ -1,3 +1,29 @@
+# Design du package « feu de camp » — 12 novembre 2026
+
+- Direction du ZIP appliquée dans la landing page existante : crème, terre rouge,
+  vert forêt, titres Fraunces auto-hébergés et frises géométriques.
+- Illustration WebP fournie par le propriétaire (171 930 octets), utilisée dans
+  le hero. Seuls les textes `hero.*` FR/MG changent : comparaison des autres
+  traductions avec le commit publié `02e7531` strictement identique.
+- Animation locale WebGL : déformation masquée des flammes, braises, 24 dessins/s
+  au maximum. Les personnages et le reste de l’image restent fixes. Aucun nouveau
+  fichier vidéo, bibliothèque d’animation, morceau ou appel externe à une police.
+- 8 contrôles spécifiques passent dans Chromium : rendu WebGL, changement réel
+  des pixels des flammes, stabilité des personnages, arrêt hors écran, mode léger,
+  réduction des mouvements, repli sans WebGL et absence d’erreurs console.
+- Les 36 contrôles du site passent à nouveau : FR/MG, 5 largeurs (360–1440 px),
+  menu mobile, ancres, captures, audio volontaire, téléchargements et contacts.
+- TypeScript, compilation et les 8 tests Node passent. Les 5 fichiers de
+  téléchargement répondent en HTTP 200 avec les tailles officielles.
+- Vérification visuelle des captures bureau, mobile FR/MG, fonctionnalités,
+  section du logiciel et téléchargement. Les compositions Windows restent de
+  vraies captures ; les aperçus conceptuels mobiles gardent leurs légendes.
+- Limitations : tests mobiles émulés dans Chromium, sans téléphone physique,
+  Safari ni Firefox. L’effet anime une illustration ; ce n’est pas une vidéo
+  de feu filmé. Il se désactive selon les préférences de mouvement et en mode léger.
+
+---
+
 # Refonte immersive — 12 novembre 2026
 
 ## Contrôles réalisés avant publication
