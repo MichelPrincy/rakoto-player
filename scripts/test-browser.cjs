@@ -25,6 +25,7 @@ app.whenReady().then(async()=>{
   await snapshot('desktop');
   for(const width of [1440,1024,768,390,360]){
    await win.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<600});await wait(160);
+   for(let attempt=0;attempt<40;attempt++){if(await run(`Array.from(document.images).filter(i=>i.getAttribute('src')&&i.getAttribute('loading')!=='lazy').every(i=>i.complete&&i.naturalWidth)`))break;await wait(100)}
    const layout=await run(`({width:innerWidth,scroll:document.documentElement.scrollWidth,missing:Array.from(document.images).filter(i=>i.getAttribute('src')&&i.getAttribute('loading')!=='lazy'&&(!i.complete||!i.naturalWidth)).map(i=>i.src),overflow:Array.from(document.querySelectorAll('body *')).flatMap(e=>{const r=e.getBoundingClientRect();return r.right>innerWidth+1&&r.width>0?[{tag:e.tagName,name:e.className?.baseVal??e.className,right:Math.round(r.right),width:Math.round(r.width)}]:[]}).slice(-15)})`);
    check(layout.scroll<=layout.width+1&&Math.abs(layout.width-width)<=1,'No horizontal page overflow at '+width,layout);check(!layout.missing.length,'Hero image loads at '+width,layout.missing);
   }
@@ -58,7 +59,8 @@ app.whenReady().then(async()=>{
   check(await run(`window.__sharePayload?.url==='https://michelprincy.github.io/rakoto-player/'`),'Share button passes the official URL without sending a message');
   await run(`Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{window.__copiedHashes=value}}});document.querySelector('[data-copy-hashes]').click()`);await wait(50);
   check(await run(`window.__copiedHashes?.includes('offline: ')&&window.__copiedHashes?.includes('android: ')`),'Checksum copy button');
-  await run(`document.querySelectorAll('img[loading="lazy"]').forEach(i=>i.loading='eager')`);await wait(450);
+  await run(`document.querySelectorAll('img[loading="lazy"]').forEach(i=>i.loading='eager')`);
+  for(let attempt=0;attempt<60;attempt++){if(await run(`Array.from(document.images).filter(i=>i.getAttribute('src')).every(i=>i.complete&&i.naturalWidth)`))break;await wait(100)}
   const missing=await run(`Array.from(document.images).filter(i=>i.getAttribute('src')&&(!i.complete||!i.naturalWidth)).map(i=>i.src)`);check(!missing.length,'All screenshot and illustration assets load',missing);
   await win.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});await run(`document.querySelector('#plateformes').scrollIntoView({behavior:'instant'})`);await wait(1400);await snapshot('platforms');
   await win.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:1200,height:630,deviceScaleFactor:1,mobile:false});

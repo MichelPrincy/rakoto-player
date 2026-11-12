@@ -25,6 +25,14 @@ Les deux dictionnaires ont été relus pour garder un registre cohérent. Les
 emprunts techniques dans le malagasy sont intentionnels. Aucune relecture
 par un traducteur tiers n’est revendiquée.
 
+## Après publication
+
+Les mêmes 36 contrôles navigateur passent sur l’URL publique
+https://michelprincy.github.io/rakoto-player/, avec zéro erreur navigateur.
+Les images et captures se chargent après changement de largeur et les liens
+de téléchargement restent actifs. Le sitemap XML, robots.txt et l’image de
+partage répondent en HTTP 200 avec leurs types de contenu attendus.
+
 ## Limites
 
 Les tailles mobiles ont été émulées dans Chromium. Aucun téléphone physique,
