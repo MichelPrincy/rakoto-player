@@ -96,7 +96,7 @@ async function verifyNative(directory=root){
       console.log('Lecture native OK : '+name);
     }
     await assert.rejects(probe(path.join(directory,'endommagé.mkv')));
-    await player.open('corrupt',path.join(directory,'endommagé.mkv'),{});
+    await assert.rejects(player.open('corrupt',path.join(directory,'endommagé.mkv'),{}));
     await until(()=>state.id==='corrupt'&&state.event==='error','fichier endommagé');
     console.log('Fichier endommagé rejeté par MediaInfo et mpv.');
   }finally{player.close();}

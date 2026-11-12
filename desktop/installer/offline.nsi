@@ -132,7 +132,8 @@ Section /o "Lancer au démarrage de Windows" Startup
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "RAKOTOPlayer" '$\"$INSTDIR\RAKOTO Player.exe$\"'
   ${EndIf}
 SectionEnd
-Section /o "Proposer RAKOTO dans Ouvrir avec" FileTypes
+Section "Reconnaissance du lecteur audio et vidéo Windows" FileTypes
+  SectionIn RO
   ${If} $testMode == "0"
     !include "${GENERATED}\associations.nsh"
   ${EndIf}

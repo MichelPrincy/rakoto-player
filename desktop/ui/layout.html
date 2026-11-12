@@ -91,7 +91,8 @@
         <label class="setting-toggle">Visualiseur audio du tiroir <input type="checkbox" v-model="s.drawerMeter"></label>
         <label>Opacité du lecteur flottant <input class="range" type="range" min=".55" max="1" step=".05" v-model.number="s.opacity"><span>{{Math.round(s.opacity*100)}} %</span></label>
         <div class="setting-actions"><button class="primary" @click="setMode('mini')">Mini-lecteur</button><button @click="setMode('pill')">Micro-lecteur</button></div></div>
-        <div class="settings-card"><h2>Lecture</h2><label>Vitesse <select v-model.number="s.speed"><option v-for="rate in rates" :key="rate" :value="rate">{{rate}}×</option></select></label><p>Espace pour lire ou mettre en pause. Les flèches déplacent la lecture de cinq secondes. F bascule le plein écran et Ctrl+M ouvre le mini-lecteur.</p></div>
+        <div class="settings-card"><h2>Lecteur Windows par défaut</h2><p>Choisissez RAKOTO pour vos fichiers audio et vidéo dans les paramètres Windows. Le lecteur actuellement choisi est conservé tant que vous ne le changez pas.</p><button class="primary" @click="defaultChoice('open')">Ouvrir les applications par défaut</button></div>
+        <div class="settings-card"><h2>Lecture</h2><label>Préparer les vidéos voisines en arrière-plan <input type="checkbox" v-model="s.backgroundScan"></label><p>Une seule analyse à la fois. Désactivez-la pour réduire davantage l’activité disque ; un fichier cliqué sera toujours analysé.</p><label>Vitesse <select v-model.number="s.speed"><option v-for="rate in rates" :key="rate" :value="rate">{{rate}}×</option></select></label><p>Espace pour lire ou mettre en pause. Les flèches déplacent la lecture de cinq secondes. F bascule le plein écran et Ctrl+M ouvre le mini-lecteur.</p></div>
       </section>
 
       <section v-else-if="!immersive" class="library">
@@ -156,9 +157,9 @@
       <input type="search" v-model="s.videoQuery" @input="resetVideoSearch" placeholder="Rechercher une vidéo…" aria-label="Rechercher dans le dossier">
       <div class="video-session-list" @scroll="s.videoScroll=$event.target.scrollTop">
         <div :style="{height:visibleVideos.before+'px'}"></div>
-        <button class="video-session-row" v-for="item in visibleVideos.rows" :key="item.id" :class="{selected:s.track.id===item.id}" @click="playId(item.id)" :title="item.fileName||item.title"><glyph name="video"/><span>{{item.fileName||item.title}}</span><i v-if="s.track.id===item.id">▶</i></button>
+        <button class="video-session-row" v-for="item in visibleVideos.rows" :key="item.id" :class="{selected:s.track.id===item.id}" @click="playId(item.id)" :title="item.fileName||item.title"><glyph name="video"/><span>{{item.fileName||item.title}}</span><i v-if="s.track.id===item.id">▶</i><small class="analysis-status" :title="item.analysisError||''">{{item.analysis==='ready'?'✓':item.analysis==='checking'?'…':item.analysis==='error'?'!':''}}</small></button>
         <div :style="{height:visibleVideos.after+'px'}"></div>
-      </div><p>{{videoItems.length}} vidéo{{videoItems.length>1?'s':''}} · rien n’est sauvegardé</p>
+      </div><p>{{videoItems.length}} vidéo{{videoItems.length>1?'s':''}} · rien n’est sauvegardé<span v-if="s.videoProgress"> · analyse : {{s.videoProgress.done}}/{{s.videoProgress.total}} traitées</span></p>
     </aside>
     <footer class="player">
       <div class="now">
@@ -184,6 +185,7 @@
         <input class="range volume" type="range" min="0" max="1" step=".01" v-model.number="s.volume" :style="progress(s.muted?0:s.volume,1)" aria-label="Volume">
       </div>
     </footer>
+    <aside v-if="s.defaultSuggestion && !immersive" class="default-offer" role="status"><b>Faire de RAKOTO votre lecteur par défaut ?</b><p>Choisissez vos formats dans les paramètres Windows.</p><button @click="defaultChoice('open')">Choisir RAKOTO</button><button @click="defaultChoice('later')">Plus tard</button><button @click="defaultChoice('never')">Ne plus proposer</button></aside>
     <transition name="toast"><div v-if="s.notice" class="notice" role="status"><glyph name="info"/> {{s.notice}}</div></transition>
   </template>
 </div>

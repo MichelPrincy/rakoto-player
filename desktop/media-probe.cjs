@@ -9,49 +9,43 @@ const types={
   ts:'video/mp2t',m2ts:'video/mp2t',mts:'video/mp2t','3gp':'video/3gpp','3g2':'video/3gpp2'
 };
 const toolPath=name=>path.join(__dirname,'native',name+'.exe');
-let worker,idle,pending,serial=0,queue=Promise.resolve();
-
-function analyze(file){
-  clearTimeout(idle);
-  if(!worker){
-    const current=worker=new Worker(path.join(__dirname,'media-analyzer.cjs'));
-    const fail=error=>{
-      if(worker!==current)return;
-      worker=null;
-      if(pending){clearTimeout(pending.timer);pending.reject(error);pending=null;}
-      current.terminate().catch(()=>{});
-    };
-    current.on('error',fail);
-    current.on('exit',()=>fail(new Error('Le service d’analyse média a été arrêté.')));
-    current.on('message',message=>{
-      if(worker!==current||!pending||message.id!==pending.id)return;
-      const job=pending;pending=null;clearTimeout(job.timer);
-      current.unref();
-      // Release the WASM heap when the library is no longer being scanned.
-      idle=setTimeout(()=>{if(worker===current&&!pending){worker=null;current.terminate().catch(()=>{});}},5000);
-      idle.unref();
-      if(message.error)job.reject(new Error(message.error));else job.resolve(message.result);
-    });
+let worker,idle,pending,serial=0;
+const jobs=[],byPath=new Map();let analyses=0;
+const failure=(message,code)=>Object.assign(new Error(message),{code});
+function release(){const old=worker;worker=null;if(old)old.terminate().catch(()=>{})}
+function complete(error,result){
+ const job=pending;if(!job)return;pending=null;clearTimeout(job.timer);byPath.delete(job.file);
+ if(error)job.reject(error);else job.resolve(result);
+ if(worker){worker.unref();clearTimeout(idle);idle=setTimeout(release,1500);idle.unref()}
+ queueMicrotask(run);
+}
+function run(){
+ if(pending||!jobs.length)return;clearTimeout(idle);
+ const job=pending=jobs.shift();
+ if(!worker){
+  const current=worker=new Worker(path.join(__dirname,'media-analyzer.cjs'));
+  current.on('error',error=>{if(worker===current){release();complete(error)}});
+  current.on('exit',()=>{if(worker===current){worker=null;complete(new Error('Le service d’analyse média a été arrêté.'))}});
+  current.on('message',message=>{if(worker!==current||pending?.id!==message.id)return;complete(message.error?failure(message.error,message.code):null,message.result)});
+ }
+ analyses++;worker.ref();job.timer=setTimeout(()=>{if(pending!==job)return;release();complete(failure('Délai d’analyse média dépassé.','ANALYSIS_TIMEOUT'))},job.background?3500:20000);
+ worker.postMessage({id:job.id,file:job.file,budget:job.background?16*1024*1024:0});
+}
+function probe(file,{background=false}={}){
+ file=path.resolve(file);
+ const existing=byPath.get(file);
+ if(existing){
+  if(!background&&existing.background){
+   existing.background=false;
+   if(existing===pending){clearTimeout(existing.timer);existing.timer=setTimeout(()=>{release();complete(failure('Délai d’analyse média dépassé.','ANALYSIS_TIMEOUT'))},20000)}
+   else{jobs.splice(jobs.indexOf(existing),1);jobs.unshift(existing)}
   }
-  worker.ref();
-  return new Promise((resolve,reject)=>{
-    const id=++serial,current=worker;
-    const timer=setTimeout(()=>{
-      if(pending?.id!==id)return;
-      pending=null;worker=null;
-      current.terminate().catch(()=>{});
-      reject(new Error('Délai d’analyse média dépassé.'));
-    },20000);
-    pending={id,resolve,reject,timer};
-    worker.postMessage({id,file});
-  });
+  return existing.promise;
+ }
+ const job={id:++serial,file,background};job.promise=new Promise((resolve,reject)=>Object.assign(job,{resolve,reject}));byPath.set(file,job);
+ if(!background&&pending?.background){release();complete(failure('Analyse différée pour donner priorité à la lecture.','ANALYSIS_PREEMPTED'))}
+ if(background)jobs.push(job);else jobs.unshift(job);
+ run();return job.promise;
 }
-
-function probe(file){
-  // A single lazy analyzer: no duplicated WASM heaps or simultaneous decoding.
-  const job=queue.then(()=>analyze(path.resolve(file)));
-  queue=job.catch(()=>{});
-  return job;
-}
-
-module.exports={probe,types,toolPath};
+function cancelBackground(except){if(pending?.background&&pending.file!==except){release();complete(failure('Analyse différée.','ANALYSIS_PREEMPTED'))}}
+module.exports={probe,types,toolPath,cancelBackground,diagnostics:()=>({analyses})};

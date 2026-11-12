@@ -43,20 +43,8 @@ try{
   const uninstall=files.map(file=>'Delete "$INSTDIR\\'+safe(path.relative(app,file))+'"');
   uninstall.push(...[...directories].sort((a,b)=>b.split(path.sep).length-a.split(path.sep).length).map(dir=>'RMDir "$INSTDIR\\'+safe(dir)+'"'));
   fs.writeFileSync(path.join(generated,'uninstall-files.nsh'),uninstall.join('\n'),'utf8');
-  const extensions=Object.keys(require('../media-probe.cjs').types);
-  const associations=[
-    'WriteRegStr HKCU "Software\\Classes\\RAKOTOPlayer.Media" "" "Média RAKOTO Player"',
-    'WriteRegStr HKCU "Software\\Classes\\RAKOTOPlayer.Media\\DefaultIcon" "" \'$\\"$INSTDIR\\RAKOTO Player.exe$\\",0\'',
-    'WriteRegStr HKCU "Software\\Classes\\RAKOTOPlayer.Media\\shell\\open\\command" "" \'$\\"$INSTDIR\\RAKOTO Player.exe$\\" $\\"%1$\\"\'',
-    'WriteRegStr HKCU "Software\\RAKOTOPlayer\\Capabilities" "ApplicationName" "RAKOTO Player"',
-    'WriteRegStr HKCU "Software\\RAKOTOPlayer\\Capabilities" "ApplicationDescription" "Lecteur multimédia local"',
-    'WriteRegStr HKCU "Software\\RegisteredApplications" "RAKOTO Player" "Software\\RAKOTOPlayer\\Capabilities"',
-    ...extensions.flatMap(ext=>[
-      'WriteRegStr HKCU "Software\\Classes\\.'+ext+'\\OpenWithProgids" "RAKOTOPlayer.Media" ""',
-      'WriteRegStr HKCU "Software\\RAKOTOPlayer\\Capabilities\\FileAssociations" ".'+ext+'" "RAKOTOPlayer.Media"'])];
-  const unregister=[...extensions.map(ext=>'DeleteRegValue HKCU "Software\\Classes\\.'+ext+'\\OpenWithProgids" "RAKOTOPlayer.Media"'),
-    'DeleteRegKey HKCU "Software\\Classes\\RAKOTOPlayer.Media"',
-    'DeleteRegValue HKCU "Software\\RegisteredApplications" "RAKOTO Player"'];
+  const associations=require('../windows-associations.cjs').registration();
+  const unregister=require('../windows-associations.cjs').unregistration();
   fs.writeFileSync(path.join(generated,'associations.nsh'),associations.join('\n'),'utf8');
   fs.writeFileSync(path.join(generated,'unregister-associations.nsh'),unregister.join('\n'),'utf8');
   run(path.join(process.env.WINDIR,'Microsoft.NET','Framework64','v4.0.30319','csc.exe'),

@@ -5,6 +5,10 @@ const subscribe = (channel, fn) => {
   return () => ipcRenderer.removeListener(channel, listener);
 };
 contextBridge.exposeInMainWorld('desktop', {
+  prepare: id=>ipcRenderer.invoke('library:prepare',id),
+  defaults: action=>ipcRenderer.invoke('windows:defaults',action),
+  onVideoProgress: fn=>subscribe('video:progress',fn),
+  onVideoItem: fn=>subscribe('video:item',fn),
   load: () => ipcRenderer.invoke('library:load'),
   import: () => ipcRenderer.invoke('library:import'),
   drop: files => ipcRenderer.invoke('library:drop', Array.from(files, file => webUtils.getPathForFile(file))),

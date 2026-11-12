@@ -58,7 +58,7 @@ function installAdvanced({ ipcMain, Menu, dialog, app, makeWindow, makeVideoHost
     if(changed || value.event==='loaded' || value.event==='stopped' || value.event==='error' || value.event==='eof') {
       flush();
       place();
-    } else if(!updateTimer) updateTimer=setTimeout(flush,70);
+    } else if(!updateTimer) updateTimer=setTimeout(flush,200);
   }
 
   function place() {

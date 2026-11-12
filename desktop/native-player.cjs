@@ -67,6 +67,7 @@ class NativePlayer extends EventEmitter {
     if(!existsSync(executable)) throw new Error('Le moteur mpv est absent du dossier native.');
     const pipe='\\\\.\\pipe\\rakoto-'+randomUUID();
     const args=['--no-config','--load-scripts=no','--ytdl=no','--access-references=no','--load-unsafe-playlists=no',
+      '--demuxer-max-bytes=32MiB','--demuxer-max-back-bytes=4MiB','--demuxer-readahead-secs=1',
       '--idle=yes','--terminal=no','--input-default-bindings=no','--input-vo-keyboard=no',
       '--osc=no','--osd-level=0','--sub-auto=exact','--audio-file-auto=no','--cursor-autohide=no',
       '--demuxer-lavf-o=protocol_whitelist=file','--input-ipc-server='+pipe,
@@ -109,6 +110,7 @@ class NativePlayer extends EventEmitter {
     this.meterReader?.close();
     this.socket?.destroy();
     this.socket=null;
+    this.loadWait?.reject(new Error('Connexion mpv fermée.'));this.loadWait=null;
     for(const request of this.pending.values()) request.reject(new Error('Connexion mpv fermée.'));
     this.pending.clear();
     if(this.loaded){this.loaded=false;this.emit('update',this.snapshot('error'));}
@@ -153,16 +155,20 @@ class NativePlayer extends EventEmitter {
       if(message.error==='success') request?.resolve(message.data);
       else request?.reject(new Error('mpv : '+message.error));
     }
+    if(message.event==='start-file'&&this.loadWait)this.loadWait.started=true;
     if(message.event==='property-change') {
       this.state[message.name]=message.data??null;
       if(this.loaded) this.emit('update',this.snapshot('state'));
     }
     if(message.event==='file-loaded') {
       this.loaded=true;
+      this.loadWait?.resolve();this.loadWait=null;
       this.emit('update',this.snapshot('loaded'));
     }
     if(message.event==='end-file' && ['eof','error'].includes(message.reason)) {
+      if(this.loadWait&&!this.loadWait.started)return;
       this.loaded=false;
+      this.loadWait?.reject(new Error('mpv ne peut pas décoder ce fichier.'));this.loadWait=null;
       this.emit('update',this.snapshot(message.reason));
     }
   }
@@ -173,13 +179,25 @@ class NativePlayer extends EventEmitter {
     this.id=id;
     this.loaded=false;
     this.state={};
-    await this.send(['set_property','pause',true]);
-    await this.send(['loadfile',file,'replace',-1,{
-      start:String(Math.max(0,Math.min(Number(options.time)||0,1e8))),
-      aid:allowed.aid(options.aid)?String(options.aid):'auto',
-      sid:allowed.sid(options.sid)?String(options.sid):'auto'
-    }]);
-    await this.send(['set_property','pause',Boolean(options.paused)]);
+    let timer;
+    const loaded=new Promise((resolve,reject)=>{
+      const finish=fn=>value=>{clearTimeout(timer);fn(value)};
+      this.loadWait={started:false,resolve:finish(resolve),reject:finish(reject)};
+      timer=setTimeout(()=>{this.loadWait=null;reject(new Error('Chargement vidéo trop long. Réessayez ou choisissez le décodage logiciel.'))},30000);
+    });
+    // Install a rejection handler immediately, even if loadfile itself rejects first.
+    loaded.catch(()=>{});
+    try{
+      await this.send(['set_property','pause',true]);
+      await this.send(['loadfile',file,'replace',-1,{
+        start:String(Math.max(0,Math.min(Number(options.time)||0,1e8))),
+        aid:allowed.aid(options.aid)?String(options.aid):'auto',
+        sid:allowed.sid(options.sid)?String(options.sid):'auto'
+      }]);
+      await loaded;
+      await this.send(['set_property','pause',Boolean(options.paused)]);
+    }catch(error){this.loadWait?.reject(error);this.loadWait=null;throw error}
+    finally{clearTimeout(timer)}
     return this.serial;
   }
 

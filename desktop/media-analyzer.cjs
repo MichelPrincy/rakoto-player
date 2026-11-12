@@ -58,7 +58,8 @@ function report(data,file,size){
     subtitles:streams.filter(t=>t['@type']==='Text').map(clean),chapters,native:!simple,webMime:simple?webMime[kind]:null};
 }
 
-async function probe(file){
+async function probe(file,budget=0){
+  let totalRead=0;
   const handle=await fs.open(file);
   try{
     const stat=await handle.stat();
@@ -69,6 +70,8 @@ async function probe(file){
     const result=await media.analyzeData(stat.size,async(size,offset)=>{
       if(!Number.isSafeInteger(size)||size<0||size>8*1024*1024||!Number.isSafeInteger(offset)||offset<0||offset>stat.size)
         throw new Error('Lecture média invalide.');
+      totalRead+=Math.min(size,stat.size-offset);
+      if(budget&&totalRead>budget)throw Object.assign(new Error('Analyse reportée : budget de lecture de fond atteint.'),{code:'ANALYSIS_BUDGET'});
       const buffer=Buffer.allocUnsafe(Math.min(size,stat.size-offset));
       const {bytesRead}=await handle.read(buffer,0,buffer.length,offset);
       return buffer.subarray(0,bytesRead);
@@ -76,7 +79,7 @@ async function probe(file){
     return report(result,file,stat.size);
   }finally{await handle.close();}
 }
-parentPort.on('message',async({id,file})=>{
-  try{parentPort.postMessage({id,result:await probe(file)});}
-  catch(error){parentPort.postMessage({id,error:String(error.message).slice(0,500)});}
+parentPort.on('message',async({id,file,budget})=>{
+  try{parentPort.postMessage({id,result:await probe(file,budget)});}
+  catch(error){parentPort.postMessage({id,error:String(error.message).slice(0,500),code:error.code});}
 });

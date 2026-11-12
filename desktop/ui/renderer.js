@@ -14,7 +14,7 @@ const labels = Object.fromEntries(navigation.flatMap(group => group.items).map((
 const defaultBars = Array(27).fill(5);
 const s = reactive({
   videoSession:null,videoShuffle:false,videoRepeat:'off',videoListOpen:false,videoQuery:'',videoScroll:0,panelKind:'music', panelQuery:'', theme:'nature', motion:'off', drawerPinned:true, drawerMeter:true, spectrum:[0,0,0,0,0], poster:null, mode:floating?(params.get('mode')||'mini'):'normal', page:'home', query:'', notice:'', stage:false,
-  items:[], queue:[], favorites:[], history:[], playlists:[], list:'', listName:'', createList:false,
+  backgroundScan:true,loading:false,defaultSuggestion:false,videoProgress:null,items:[], queue:[], favorites:[], history:[], playlists:[], list:'', listName:'', createList:false,
   listEdit:false, queueOpen:true, lyrics:false, track:null, playing:false, time:0, duration:0, shuffle:false,
   repeat:'off', resume:true, positions:{}, nativePlayback:false, nativeLoaded:false, audioName:'', subtitleName:'', muted:false, volume:.68, speed:1, opacity:1, eqOn:true, preset:'Neutre', bands:[...presets.Neutre],
   bass:0, fade:0, bars:defaultBars, theater:false, resolution:'', drag:-1, caption:''
@@ -28,7 +28,7 @@ if (demo) Object.assign(s, {
 });
 
 let engine, cues = [], pendingSeek, noticeTimer, shuffleNext, persistReady = false, loadVersion=0;
-const remembered = ['theme','motion','drawerPinned','drawerMeter','queue','favorites','history','playlists','shuffle','repeat','muted','volume','speed',
+const remembered = ['backgroundScan','theme','motion','drawerPinned','drawerMeter','queue','favorites','history','playlists','shuffle','repeat','muted','volume','speed',
   'opacity','eqOn','preset','bands','bass','fade','queueOpen','resume','positions'];
 const serialize = value => JSON.parse(JSON.stringify(value));
 const itemMap = computed(() => new Map(s.items.map(item=>[item.id,item])));
@@ -173,6 +173,7 @@ function include(result,force=false) {
   if(force||result?.session||!s.track?.url)playItem(selected);
   if(result?.session?.notice)notify(result.session.notice);
 }
+async function defaultChoice(action){s.defaultSuggestion=false;try{await bridge.defaults(action)}catch{notify('Impossible d’ouvrir les applications par défaut de Windows.')}}
 async function openFiles() {
   try { include(await bridge.import()); }
   catch(error) {if(s.track?.type==='video')stopMedia();notify(error.message.replace(/^Error invoking remote method .*?: Error: /,''));}
@@ -213,6 +214,12 @@ async function playItem(item, startAt=0, paused=false, restart=false) {
   if(!item) return;
   const version=++loadVersion;
   rememberAudioPosition();
+  s.loading=true;s.nativeLoaded=false;publish();
+  if(item.url){
+    try{const prepared=await bridge.prepare(item.id);if(version!==loadVersion)return;item=byId(item.id)||prepared;Object.assign(item,prepared)}
+    catch(error){if(version===loadVersion){s.loading=false;stopMedia();notify(error.message.replace(/^Error invoking remote method .*?: Error: /,''))}return}
+  }
+  if(version!==loadVersion)return;s.loading=false;
   initializeTrack(item);
   s.playing=false;
   s.nativePlayback=Boolean(item.native);
@@ -253,7 +260,7 @@ function trackName(track){
   return [track.title,lang&&lang!=='und'?lang:'',String(track.codec||'').toUpperCase()].filter(Boolean).join(' · ');
 }
 function nativeUpdate(update) {
-  if(!s.nativePlayback||update.id!==s.track?.id)return;
+  if(s.loading||!s.nativePlayback||update.id!==s.track?.id)return;
   const props=update.properties;
   s.nativeLoaded=update.loaded;
   if(update.event==='error'){s.playing=false;notify('mpv n’a pas pu lire ce média.');publish();return;}
@@ -278,6 +285,7 @@ function rememberAudioPosition(){
   if(ids.length>400)delete s.positions[ids[0]];
 }
 function stopMedia(){
+  loadVersion++;s.loading=false;s.playing=false;s.nativeLoaded=false;
   rememberAudioPosition();
   if(s.nativePlayback){nativeAction(bridge.nativeTransport('stop'));return;}
   engine.pause();seek(0);
@@ -419,7 +427,7 @@ function tick() {
 }
 function publish() {
   if(!bridge||floating) return;
-  bridge.publish(serialize({track:s.track,playing:s.playing,time:s.time,duration:s.duration,theme:s.theme,motion:s.motion,drawerMeter:s.drawerMeter,nativePlayback:s.nativePlayback,opacity:s.opacity,
+  bridge.publish(serialize({track:s.track,playing:s.playing,time:s.time,duration:s.duration,theme:s.theme,motion:s.motion,drawerMeter:s.drawerMeter,nativePlayback:s.nativePlayback,nativeLoaded:s.nativeLoaded&&!s.loading,backgroundScan:s.backgroundScan,opacity:s.opacity,
     speed:s.speed,volume:s.volume,muted:s.muted,repeat:repeatMode.value,shuffle:shuffleOn.value,resume:s.track?.type==='video'?false:s.resume,audioName:s.audioName,subtitleName:s.subtitleName}));
 }
 function hotkey(event) {
@@ -478,6 +486,7 @@ const app=createApp({
         if(previous!==drawerActive())nativeSettings();
       });
       bridge.onNative(nativeUpdate);
+      bridge.onVideoProgress?.(progress=>{if(progress.id===s.videoSession?.id)s.videoProgress=progress});
       bridge.onOpenedFiles(result=>include(result,true));
       bridge.onMediaUpdated?.(item=>{
         const existing=byId(item.id);if(existing)Object.assign(existing,item);
@@ -488,7 +497,8 @@ const app=createApp({
       const stageObserver=new ResizeObserver(stageBounds);
       stageObserver.observe(document.querySelector('.immersive-stage'));
       bridge.onCommand(({action,value})=>{
-        if(action==='toggle')toggle();
+        if(action==='defaultSuggestion')s.defaultSuggestion=true;
+        else if(action==='toggle')toggle();
         else if(action==='openError'){stopMedia();notify(value);}
         else if(action==='next')next();
         else if(action==='previous')previous();
@@ -565,11 +575,12 @@ const app=createApp({
       watch(()=>[s.repeat,s.shuffle,s.resume,s.videoRepeat,s.videoShuffle],publish);
       watch(()=>[s.theme,s.motion,s.opacity,s.drawerMeter],publish);
       watch(()=>s.drawerMeter,nativeSettings);
+      watch(()=>s.backgroundScan,publish);
       watch(()=>s.shuffle,()=>shuffleNext=null);
     }
     return {s,floating,themes,homeItems,shuffleOn,repeatMode,toggleShuffle,videoItems,visibleVideos,drawerCover,meterLevels,drawerVolume,navigation,pageName,immersive,shelves,visibleItems,selectedList,categories,presets,frequencies,curve,repeatLabel,
       rates,variants,variantLabel,selectVariant,cover,artStyle,clock,progress,byId,go,theme,choosePreset,favorite,enqueue,moveQueue,createPlaylist,
-      editPlaylist,deletePlaylist,openFiles,dropFiles,playFrom,playId,heroPlay,toggle,seek,repeat,previous,
+      editPlaylist,deletePlaylist,defaultChoice,openFiles,dropFiles,playFrom,playId,heroPlay,toggle,seek,repeat,previous,
       next:()=>floating?bridge.command('next'):next(),toggleQueue,resetVideoSearch,toggleLyrics,showStage,leaveStage,full,setMode,pip,loadCaption,mediaMenu};
   }
 });

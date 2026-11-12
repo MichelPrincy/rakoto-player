@@ -1,11 +1,13 @@
-const { app, BaseWindow, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, session } = require('electron');
+const { app, BaseWindow, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, session, shell, nativeImage } = require('electron');
 const fs = require('node:fs/promises');
 const { createReadStream } = require('node:fs');
 const { Readable } = require('node:stream');
 const path = require('node:path');
-const { probe, types } = require('./media-probe.cjs');
+const { probe, types, cancelBackground, diagnostics } = require('./media-probe.cjs');
 const { installAdvanced } = require('./advanced.cjs');
 const {fileId,folderSession,persistentState}=require('./video-session.cjs');
+const associations=require('./windows-associations.cjs');
+const {createPreflight}=require('./video-preflight.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'rakoto', privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true
@@ -16,10 +18,11 @@ app.setName('RAKOTO Player');
 const demo = process.argv.includes('--demo');
 const advancedVerify = process.argv.includes('--verify-advanced');
 const sessionVerify=process.argv.includes('--verify-session');
-const verify = process.argv.includes('--verify') || advancedVerify || sessionVerify;
+const cacheVerify=process.argv.includes('--verify-cache');
+const verify = process.argv.includes('--verify') || advancedVerify || sessionVerify || cacheVerify;
 if (verify) {
   app.commandLine.appendSwitch('mute-audio');
-  app.setPath('userData', path.join(app.getPath('temp'), 'rakoto-verify-' + process.pid));
+  app.setPath('userData',cacheVerify?path.resolve(process.env.RAKOTO_CACHE_PROFILE):path.join(app.getPath('temp'),'rakoto-verify-'+process.pid));
 }
 const ui = path.join(__dirname, 'ui');
 const base = 'rakoto://app';
@@ -32,6 +35,20 @@ const icon = path.join(ui, 'rakoto.ico');
 let main, floating, floatRevision=0, closing = false, mode = 'normal', lastState;
 const windowDrags=new Map();
 let videoSession=null,openingRevision=0;
+const preflight=createPreflight({analyze:(id,options)=>ensureAnalyzed(id,options),delay:require('node:os').totalmem()<=8*1024**3?1200:700,
+ update:(owner,item)=>{if(owner!==videoSession)return;main?.webContents.send('library:updated',item);main?.webContents.send('video:progress',{id:owner.id,done:owner.items.filter(value=>['ready','deferred','error'].includes(value.analysis)).length,total:owner.items.length});
+ if(advanced?.overlay&&!advanced.overlay.isDestroyed())advanced.overlay.webContents.send('video:item',item)}
+});
+let lastOfferedId;
+function considerDefault(track){
+ if(verify||!app.isPackaged||!track?.id||lastOfferedId===track.id)return;
+ lastOfferedId=track.id;settings.defaultOffer||={};const pref=settings.defaultOffer;pref.opens=(pref.opens||0)+1;
+ const extension=path.extname(files.get(track.id)?.path||'').slice(1).toLowerCase();
+ if(pref.opens>=3&&!pref.never&&Date.now()>=(pref.next||0)&&associations.shouldOffer(associations.status(process.execPath,extension),pref)){
+  pref.next=Date.now()+7*86400000;main.webContents.send('player:command',{action:'defaultSuggestion'});
+ }
+ store();
+}
 const ephemeralIds=new Set();
 let skipDrawerMinimize=false, posterId, poster, posterAttempts=0, posterNext=0, posterBusy=false;
 const drawerMode=()=>['drawer','mini'].includes(mode);
@@ -93,18 +110,25 @@ const requestFrom = (event, win) => Boolean(win && !win.isDestroyed() &&
   event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame &&
   event.senderFrame.url.startsWith(base + '/'));
 
-function store() {
+function serializedState() {
   const saved=persistentState(memory,settings,ephemeralIds);
-  const data = JSON.stringify({...saved,libraryVersion:2,paths:Array.from(files.values()).filter(item=>item.persistent!==false).map(item=>item.path)});
-  const next = stateFile + '.tmp';
-  writeChain = writeChain.catch(() => {}).then(async () => {
-    await fs.writeFile(next, data);
-    await fs.rename(next, stateFile);
-  }).catch(error => console.error('Sauvegarde RAKOTO', error.message));
-  return writeChain;
+  const entries=Array.from(files).filter(([,record])=>record.persistent===true&&record.probe).map(([id,record])=>({path:record.path,size:record.size,mtime:record.mtime,probe:record.probe,item:catalog.get(id),cover:Boolean(record.coverPath)}));
+  return JSON.stringify({...saved,libraryVersion:3,entries,paths:entries.map(entry=>entry.path)});
+}
+let saveScheduled=false,saveDirty=false;
+function store(){
+ saveDirty=true;if(saveScheduled)return writeChain;
+ saveScheduled=true;
+ writeChain=writeChain.catch(()=>{}).then(async()=>{
+  while(saveDirty){
+   await new Promise(resolve=>setTimeout(resolve,400));saveDirty=false;
+   const next=stateFile+'.tmp';await fs.writeFile(next,serializedState());await fs.rename(next,stateFile);
+  }
+ }).catch(error=>console.error('Sauvegarde RAKOTO',error.message)).finally(()=>{saveScheduled=false});
+ return writeChain;
 }
 
-async function register(file, enrich = true) {
+async function register(file, enrich = true, options={}) {
   if (typeof file !== 'string' || !path.isAbsolute(file)) return null;
   const ext = path.extname(file).slice(1).toLowerCase();
 
@@ -114,8 +138,10 @@ async function register(file, enrich = true) {
   if(catalog.has(id)&&files.get(id)?.probe&&files.get(id)?.size===stat.size&&files.get(id)?.mtime===stat.mtimeMs)return catalog.get(id);
   const name = path.basename(file, path.extname(file));
   const [artist, title] = name.includes(' - ') ? name.split(/ - (.+)/) : ['', name];
-  const analysis = await probe(file).catch(() => null);
+  let analysis;
+  try{analysis=await probe(file,options)}catch(error){if(options.background)throw error;if(['ANALYSIS_BUDGET','ANALYSIS_PREEMPTED'].includes(error.code))analysis=await probe(file);else return null}
   if (!analysis) return null;
+  if(options.background&&!videoSession?.items.some(value=>value.id===id))throw Object.assign(new Error('Session remplacée.'),{code:'ANALYSIS_PREEMPTED'});
   const mime = analysis.webMime || types[ext] || 'application/octet-stream';
   const isVideo=analysis.video.length>0;
   const record = { path: file, mime, probe: analysis,size:stat.size,mtime:stat.mtimeMs,persistent:!isVideo&&!ephemeralIds.has(id) };
@@ -123,7 +149,7 @@ async function register(file, enrich = true) {
   files.set(id, record);
   const item = { id, title, artist: artist || 'Artiste inconnu', album: '', genre: '',
     type: analysis.video.length ? 'video' : 'music', native:analysis.native, url: '/media/' + id,
-    download: isUnder(file, app.getPath('downloads')), ext: ext.toUpperCase() };
+    download: isUnder(file, app.getPath('downloads')), ext: ext.toUpperCase(),analysis:'ready' };
   if(isVideo)Object.assign(item,{title:path.basename(file),fileName:path.basename(file),artist:path.basename(path.dirname(file))});
   if (enrich && item.type === 'music') {
     try {
@@ -134,7 +160,11 @@ async function register(file, enrich = true) {
         type: tags.podcast || /podcast/i.test(tags.genre?.join(' ') || name) ? 'podcast' : 'music' });
       const picture = tags.picture?.find(value => /^image\/(jpeg|png|webp)$/.test(value.format) && value.data.length < 8_000_000);
       if (picture) {
-        record.cover = picture;
+        const original=nativeImage.createFromBuffer(Buffer.from(picture.data));
+        const dimensions=original.getSize();
+        const compact=dimensions.width>384?original.resize({width:384,quality:'good'}):original;
+        const directory=path.join(app.getPath('userData'),'covers');await fs.mkdir(directory,{recursive:true});
+        record.coverPath=path.join(directory,id+'.jpg');await fs.writeFile(record.coverPath,compact.toJPEG(80));
         item.cover = '/cover/' + id;
       }
     } catch { /* Files without readable tags keep their filenames. */ }
@@ -164,18 +194,20 @@ async function describeVideo(file){
   if(existing){files.get(id).persistent=false;return existing;}
   const ext=path.extname(file).slice(1).toLowerCase();
   const item={id,title:path.basename(file),fileName:path.basename(file),artist:path.basename(path.dirname(file)),album:'',genre:'',
-    type:'video',native:true,url:'/media/'+id,ext:ext.toUpperCase()};
+    type:'video',native:true,url:'/media/'+id,ext:ext.toUpperCase(),analysis:'pending'};
   files.set(id,{path:file,mime:types[ext]||'application/octet-stream',probe:null,persistent:false});
   catalog.set(id,item);return item;
 }
-async function ensureAnalyzed(id){
+async function ensureAnalyzed(id,options={}){
   const record=files.get(id);if(!record)return null;
-  const item=await register(record.path);
+  const item=await register(record.path,!options.background,options);
   if(!item)throw new Error('Ce fichier est inaccessible, endommagé ou n’est plus un média reconnu.');
+  if(item&&videoSession){const listed=videoSession.items.find(value=>value.id===id);if(listed)Object.assign(listed,item)}
   if(item&&!main?.isDestroyed())main.webContents.send('library:updated',item);
   return item;
 }
 async function openPaths(paths){
+  preflight.pause();cancelBackground();
   const revision=++openingRevision;
   const picked=await registerList(paths);
   if(revision!==openingRevision)return {items:[]};
@@ -184,7 +216,7 @@ async function openPaths(paths){
   if(!first){await store();return {items:picked,selectedId:picked[0]?.id};}
   const next=await folderSession({item:first,path:files.get(first.id).path},file=>revision===openingRevision?describeVideo(file):null);
   if(revision!==openingRevision)return {items:[]};
-  videoSession=next;
+  videoSession=next;preflight.setSession(next);
   const keep=new Set(next.items.map(item=>item.id));
   for(const [id,record] of files)if(record.persistent===false&&!keep.has(id)){files.delete(id);catalog.delete(id);}
   const cleaned=persistentState(memory,settings,ephemeralIds);memory=cleaned.memory;
@@ -352,6 +384,14 @@ async function changeWindow(kind, opacity) {
 }
 
 function installIpc() {
+  ipcMain.handle('library:prepare',async(event,id)=>{if(!requestFrom(event,main)||typeof id!=='string'||!files.has(id))throw new Error('Sélection média invalide.');preflight.pause();cancelBackground(files.get(id).path);return ensureAnalyzed(id)});
+  ipcMain.handle('windows:defaults',(event,action)=>{
+   if(!requestFrom(event,main)||!['open','later','never'].includes(action))return false;
+   settings.defaultOffer||={};
+   if(action==='open')return shell.openExternal('ms-settings:defaultapps?registeredAppUser='+encodeURIComponent('RAKOTO Player')).then(()=>true);
+   if(action==='never')settings.defaultOffer.never=true;
+   settings.defaultOffer.next=Date.now()+30*86400000;store();return true;
+  });
   ipcMain.on('window:drag',(event,value)=>{
     const win=[main,floating].find(window=>requestFrom(event,window));
     if(!win||!value||typeof value!=='object')return;
@@ -416,6 +456,8 @@ function installIpc() {
   ipcMain.on('player:state', (event, value) => {
     if (!requestFrom(event, main)) return;
     lastState = value;
+    preflight.playback(Boolean(value.nativeLoaded&&value.backgroundScan!==false&&value.track?.type==='video'));
+    if(value.playing)considerDefault(value.track);
     advanced?.publish();
     if (floating?.isVisible()) floating.webContents.send('player:state', value);
     refreshPoster();
@@ -440,7 +482,14 @@ app.whenReady().then(async () => {
   const savedPaths=Array.isArray(saved.paths)?saved.paths:[];
   // One-time migration analyses legacy paths once, preserving audio-only video containers.
   // Future saves contain music paths only; no video folder is restored at startup.
-  await registerList(savedPaths.filter(file=>typeof file==='string'));
+  if(saved.libraryVersion===3&&Array.isArray(saved.entries)){
+    for(const entry of saved.entries.slice(0,600)){
+      if(typeof entry.path!=='string'||!path.isAbsolute(entry.path)||!entry.item||!entry.probe?.audio?.length||entry.probe.video?.length||entry.item.type==='video')continue;
+      const id=fileId(entry.path),item={...entry.item,id,url:'/media/'+id};
+      catalog.set(id,item);files.set(id,{path:entry.path,mime:entry.probe.webMime||types[path.extname(entry.path).slice(1).toLowerCase()],probe:entry.probe,size:entry.size,mtime:entry.mtime,persistent:true,
+       ...(entry.cover?{coverPath:path.join(app.getPath('userData'),'covers',id+'.jpg')}: {})});
+    }
+  }else await registerList(savedPaths.filter(file=>typeof file==='string'));
   for(const [id,record] of files)if(record.persistent===false){files.delete(id);catalog.delete(id);}
   const migrated=persistentState(memory,settings,ephemeralIds);memory=migrated.memory;settings=migrated.settings;
   await store();
@@ -452,6 +501,7 @@ app.whenReady().then(async () => {
       const file = files.get(id);
       return streamFile(request, file.path, file.mime);
     }
+    if(kind==='cover'&&files.get(id)?.coverPath)return streamFile(request,files.get(id).coverPath,'image/jpeg');
     if (kind === 'cover' && files.get(id)?.cover) {
       const cover = files.get(id).cover;
       return new Response(cover.data, { headers: { 'Content-Type': cover.format } });
@@ -486,8 +536,9 @@ app.whenReady().then(async () => {
   main.on('closed', () => { if (!verify) app.quit(); });
   main.on('enter-full-screen', () => main.webContents.send('window:changed', 'fullscreen'));
   main.on('leave-full-screen', sendMode);
-  await main.loadURL(base + '/' + (sessionVerify?'?verify=1':verify ? '?demo=1&verify=1' : demo ? '?demo=1' : ''));
-  if(sessionVerify)await require('./tools/verify-session.cjs')({main,app,showStartup,openPaths,advanced,changeWindow,store,stateFile,files,catalog,session:()=>videoSession});
+  await main.loadURL(base + '/' + ((sessionVerify||cacheVerify)?'?verify=1':verify ? '?demo=1&verify=1' : demo ? '?demo=1' : ''));
+  if(cacheVerify)await require('./tools/verify-cache.cjs')({app,main,catalog,diagnostics});
+  else if(sessionVerify)await require('./tools/verify-session.cjs')({main,app,showStartup,openPaths,advanced,changeWindow,store,stateFile,files,catalog,session:()=>videoSession});
   else if (advancedVerify) await require('./tools/verify-advanced.cjs')({main,app,register,probe,advanced,changeWindow,current:()=>({mode,floating,lastState})});
   else if (verify) await require('./tools/verify.cjs')({ main, changeWindow, current: () => ({ mode, floating, lastState }),
     register, base, app, advanced });
