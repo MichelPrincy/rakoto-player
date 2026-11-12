@@ -33,6 +33,7 @@ html=html.replaceAll('href="/downloads/','href="'+downloadOrigin+'/downloads/')
   .replaceAll('href="/','href="./').replaceAll('src="/','src="./');
 await mkdir(output,{recursive:true});
 await writeFile(path.join(output,'index.html'),html);
+for(const file of ['robots.txt','sitemap.xml'])await cp(path.join(root,'src',file),path.join(output,file));
 await cp(path.join(root,'assets'),path.join(output,'assets'),{recursive:true});
 await cp(path.join(root,'src/style.css'),path.join(output,'style.css'));
 await writeFile(path.join(output,'release.json'),JSON.stringify(manifest,null,2)+'\n');

@@ -14,6 +14,9 @@
 /* Android Lamba identity, scoped to preserve the Windows visual system. */
 .android-panel{background:#f6eedc;color:#3b2418}.android-panel h2,.android-panel h3,.android-panel li b{color:#3b2418}.android-panel h2 em,.android-panel .eyebrow{color:#b5442e}.android-panel .android-download{background:#fffaf0;border-color:#e6d8bc}.android-panel .download-button.primary{background:#b5442e;color:#fff}.android-panel .android-scope,.android-panel p,.android-panel li{color:#806655}.android-variant-label{display:block;font-size:.78rem;font-weight:700;margin:18px 0 8px}#android-variant{width:100%;font:inherit;font-size:.86rem;padding:13px;border:1px solid #e6d8bc;border-radius:12px;background:#fffaf0;color:#3b2418;min-height:44px}#android-variant:focus-visible{outline:3px solid #e3b04b;outline-offset:3px}
 
+/* A descriptive product heading stays readable beside the desktop illustration. */
+.hero h1.product-title{font-size:clamp(38px,4.2vw,61px);letter-spacing:-.05em}
+@media(max-width:760px){.hero h1.product-title{font-size:clamp(33px,8.8vw,60px)}}
 /* Windows Lamba — desktop mockup identity. */
 .product-window{background:#FFFAF0;border-color:#E6D8BC;box-shadow:0 35px 60px #3B241824,0 7px 15px #3B241809}
 .window-title{position:relative;background:#FFFAF0;border-color:#E6D8BC;color:#3B2418}.window-title:before{content:"";position:absolute;inset:0 0 auto;height:3px;background:repeating-linear-gradient(90deg,#B5442E 0 10px,#E3B04B 10px 14px,#2F5D43 14px 24px,#E3B04B 24px 28px)}
