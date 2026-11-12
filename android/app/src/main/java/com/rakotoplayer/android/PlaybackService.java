@@ -11,6 +11,8 @@ import org.videolan.libvlc.*;
 import org.videolan.libvlc.interfaces.IMedia;
 
 public class PlaybackService extends Service {
+  public static volatile boolean running;
+  private boolean defaultRateApplied;
   public static final String PLAY = "com.rakotoplayer.PLAY",
       TOGGLE = "com.rakotoplayer.TOGGLE",
       NEXT = "com.rakotoplayer.NEXT",
@@ -61,6 +63,7 @@ public class PlaybackService extends Service {
   @Override
   public void onCreate() {
     super.onCreate();
+    running = true;
     library = new Library(this);
     audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
     ArrayList<String> options =
@@ -305,6 +308,7 @@ public class PlaybackService extends Service {
     queue = new ArrayList<>(items);
     queueIndex = index;
     current = queue.get(index);
+    defaultRateApplied = false;
     error = "";
     hasVideo = false;
     loading = true;
@@ -361,6 +365,18 @@ public class PlaybackService extends Service {
       session.setActive(true);
       updateSession();
     }
+  }
+
+  public void enqueue(MediaEntry entry) {
+    if (entry.isPrivate() || current != null && current.isPrivate()) return;
+    queue.add(entry);
+    if (queueIndex < 0) queueIndex = 0;
+    notifyChanged();
+  }
+
+  public void jumpTo(int index) {
+    if (current != null && current.isPrivate()) return;
+    if (index >= 0 && index < queue.size()) open(queue, index);
   }
 
   public void pause() {
@@ -444,13 +460,21 @@ public class PlaybackService extends Service {
     IMedia media = player.getMedia();
     if (media == null || current == null) return;
     try {
-      String title = media.getMeta(Media.Meta.Title), artist = media.getMeta(Media.Meta.Artist);
+      String title = media.getMeta(Media.Meta.Title),
+          artist = media.getMeta(Media.Meta.Artist),
+          album = media.getMeta(Media.Meta.Album);
+      if (album != null && !album.trim().isEmpty()) current.album = album;
       if (title != null && !title.trim().isEmpty()) current.title = title;
       if (artist != null && !artist.trim().isEmpty()) current.artist = artist;
       hasVideo = false;
       for (int i = 0; i < media.getTrackCount(); i++) {
         IMedia.Track track = media.getTrack(i);
         if (track != null && track.type == IMedia.Track.Type.Video) hasVideo = true;
+        if (track instanceof IMedia.VideoTrack) {
+          IMedia.VideoTrack v = (IMedia.VideoTrack) track;
+          current.width = v.width;
+          current.height = v.height;
+        }
       }
       current.video = hasVideo;
       current.durationMs = Math.max(current.durationMs, player.getLength());
@@ -465,6 +489,11 @@ public class PlaybackService extends Service {
       loading = false;
       renewWake();
       metadata();
+      if (!defaultRateApplied) {
+        player.setRate(hasVideo ? library.preferences.getFloat("video_default_speed", 1f) : 1f);
+        defaultRateApplied = true;
+      }
+      if (current != null) library.markPlayed(current.uri);
       updateSession();
     } else if (event.type == org.videolan.libvlc.MediaPlayer.Event.ESAdded
         || event.type == org.videolan.libvlc.MediaPlayer.Event.LengthChanged) {
@@ -563,6 +592,7 @@ public class PlaybackService extends Service {
 
   @Override
   public void onDestroy() {
+    running = false;
     handler.removeCallbacksAndMessages(null);
     savePosition();
     releaseWake();

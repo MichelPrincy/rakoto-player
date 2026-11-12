@@ -89,7 +89,13 @@ public final class MediaScanner {
                 "date_added",
                 "date_modified",
                 "title"));
-    if (!video) columns.add("artist");
+    if (!video) {
+      columns.add("artist");
+      columns.add("album");
+    } else {
+      columns.add("width");
+      columns.add("height");
+    }
     columns.add(Build.VERSION.SDK_INT >= 29 ? "relative_path" : "_data");
     List<MediaEntry> entries = new ArrayList<>();
     try (Cursor cursor =
@@ -107,6 +113,9 @@ public final class MediaScanner {
         entry.mime = string(cursor, "mime_type");
         entry.size = number(cursor, "_size");
         entry.video = video;
+        entry.album = video ? "" : string(cursor, "album");
+        entry.width = video ? (int) number(cursor, "width") : 0;
+        entry.height = video ? (int) number(cursor, "height") : 0;
         entry.durationMs = number(cursor, "duration");
         entry.modifiedAt = number(cursor, "date_modified") * 1000;
         long added = number(cursor, "date_added") * 1000;
@@ -227,6 +236,11 @@ public final class MediaScanner {
               && cached.durationMs > 0) {
             entry.durationMs = cached.durationMs;
             entry.video = cached.video;
+            entry.title = cached.title;
+            entry.artist = cached.artist;
+            entry.album = cached.album;
+            entry.width = cached.width;
+            entry.height = cached.height;
           } else {
             boolean detected = duration(context, entry);
             if (kind < 0 && !detected) continue;
@@ -261,6 +275,16 @@ public final class MediaScanner {
         retriever.setDataSource(fd.getFileDescriptor());
         String duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
         if (duration != null) entry.durationMs = Long.parseLong(duration);
+        String title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE),
+            artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST),
+            album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM);
+        if (title != null && !title.trim().isEmpty()) entry.title = title;
+        if (artist != null && !artist.trim().isEmpty()) entry.artist = artist;
+        if (album != null) entry.album = album;
+        String width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH),
+            height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+        if (width != null) entry.width = Integer.parseInt(width);
+        if (height != null) entry.height = Integer.parseInt(height);
         String video = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO),
             audio = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO);
         if ("yes".equals(video)) entry.video = true;

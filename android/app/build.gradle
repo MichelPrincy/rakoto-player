@@ -1,4 +1,4 @@
-plugins { id 'com.android.application' }
+plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
 android {
     namespace 'com.rakotoplayer.android'
     compileSdk 36
@@ -6,8 +6,8 @@ android {
         applicationId 'com.rakotoplayer.android'
         minSdk 23
         targetSdk 36
-        versionCode 2
-        versionName '1.0.0-beta.2'
+        versionCode 3
+        versionName '1.0.0-beta.3'
         testInstrumentationRunner 'com.rakotoplayer.android.PlayerInstrumentation'
     }
     signingConfigs {
@@ -19,9 +19,9 @@ android {
         }
     }
     buildTypes {
-        debug { ndk { abiFilters 'x86_64', 'arm64-v8a', 'armeabi-v7a' } }
+        debug { if(!project.hasProperty('splitApks')) { ndk { abiFilters 'x86_64', 'arm64-v8a', 'armeabi-v7a' } } }
         release {
-            ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
+            if(!project.hasProperty('splitApks')) { ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' } }
             signingConfig signingConfigs.release
             minifyEnabled true
             shrinkResources true
@@ -29,8 +29,10 @@ android {
         }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    packaging { jniLibs { useLegacyPackaging = true } }
+    packaging { jniLibs { useLegacyPackaging = true; if(project.hasProperty('splitApks')) { excludes += ['lib/x86/**','lib/x86_64/**'] } } }
+    splits { abi { enable project.hasProperty('splitApks'); reset(); include 'arm64-v8a','armeabi-v7a'; universalApk true } }
     lint { abortOnError true; checkReleaseBuilds true }
 }
+kotlin { compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 } }
 tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
-dependencies { implementation 'org.videolan.android:libvlc-all:3.7.7' }
+dependencies { implementation 'org.videolan.android:libvlc-all:3.7.7'; implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.3.21' }

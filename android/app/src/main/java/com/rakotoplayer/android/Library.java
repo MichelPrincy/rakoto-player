@@ -47,14 +47,17 @@ public final class Library {
     "source",
     "duration",
     "added",
-    "modified"
+    "modified",
+    "album",
+    "width",
+    "height"
   };
 
   private static final class Database extends SQLiteOpenHelper {
     private final Context context;
 
     Database(Context context) {
-      super(context, "rakoto-library.db", null, 1);
+      super(context, "rakoto-library.db", null, 2);
       this.context = context;
       setWriteAheadLoggingEnabled(true);
     }
@@ -64,7 +67,8 @@ public final class Library {
       db.execSQL(
           "CREATE TABLE media(uri TEXT PRIMARY KEY,name TEXT,title TEXT,artist TEXT,mime TEXT,size"
               + " INTEGER,video INTEGER,folder TEXT,source TEXT,duration INTEGER,added"
-              + " INTEGER,modified INTEGER,seen INTEGER DEFAULT 0)");
+              + " INTEGER,modified INTEGER,seen INTEGER DEFAULT 0,album TEXT NOT NULL DEFAULT"
+              + " '',width INTEGER NOT NULL DEFAULT 0,height INTEGER NOT NULL DEFAULT 0)");
       db.execSQL("CREATE INDEX media_kind_folder ON media(video,folder)");
       db.execSQL("CREATE TABLE favorites(uri TEXT PRIMARY KEY)");
       db.execSQL(
@@ -92,7 +96,11 @@ public final class Library {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-      throw new IllegalStateException("Migration non définie");
+      if (oldVersion < 2) {
+        db.execSQL("ALTER TABLE media ADD COLUMN album TEXT NOT NULL DEFAULT ''");
+        db.execSQL("ALTER TABLE media ADD COLUMN width INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("ALTER TABLE media ADD COLUMN height INTEGER NOT NULL DEFAULT 0");
+      }
     }
   }
 
@@ -110,6 +118,9 @@ public final class Library {
     v.put("duration", e.durationMs);
     v.put("added", e.addedAt);
     v.put("modified", e.modifiedAt);
+    v.put("album", e.album);
+    v.put("width", e.width);
+    v.put("height", e.height);
     return v;
   }
 
@@ -125,6 +136,9 @@ public final class Library {
     e.durationMs = c.getLong(9);
     e.addedAt = c.getLong(10);
     e.modifiedAt = c.getLong(11);
+    e.album = c.getString(12);
+    e.width = c.getInt(13);
+    e.height = c.getInt(14);
     return e;
   }
 
@@ -175,7 +189,7 @@ public final class Library {
     try (Cursor old =
         db.query(
             "media",
-            new String[] {"added", "duration"},
+            new String[] {"added", "duration", "album", "width", "height"},
             "uri=?",
             new String[] {e.uri},
             null,
@@ -184,6 +198,9 @@ public final class Library {
       if (old.moveToFirst()) {
         v.put("added", old.getLong(0));
         if (e.durationMs <= 0) v.put("duration", old.getLong(1));
+        if (e.album.isEmpty()) v.put("album", old.getString(2));
+        if (e.width <= 0) v.put("width", old.getInt(3));
+        if (e.height <= 0) v.put("height", old.getInt(4));
       }
     }
     if (seen != 0) v.put("seen", seen);
@@ -226,6 +243,9 @@ public final class Library {
     v.put("artist", item.artist);
     v.put("video", item.video ? 1 : 0);
     if (item.durationMs > 0) v.put("duration", item.durationMs);
+    if (!item.album.isEmpty()) v.put("album", item.album);
+    if (item.width > 0) v.put("width", item.width);
+    if (item.height > 0) v.put("height", item.height);
     database.getWritableDatabase().update("media", v, "uri=?", new String[] {item.uri});
   }
 
@@ -324,6 +344,15 @@ public final class Library {
 
   public long position(String uri) {
     return preferences.getBoolean("resume", true) ? preferences.getLong("position:" + uri, 0) : 0;
+  }
+
+  public boolean played(String uri) {
+    return preferences.getLong("played:" + uri, 0) > 0;
+  }
+
+  public void markPlayed(String uri) {
+    if (!uri.startsWith("rakoto-vault:"))
+      preferences.edit().putLong("played:" + uri, System.currentTimeMillis()).apply();
   }
 
   public Set<String> folders() {

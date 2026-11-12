@@ -1,6 +1,9 @@
 RAKOTO PLAYER ANDROID — COMPOSANTS ET SOURCES
 
-Première version bêta : 1.0.0-beta.1.
+Version bêta : 1.0.0-beta.3.
+Interface native Kotlin 2.3.21, JetBrains et contributeurs (Apache-2.0).
+Le texte de cette licence est fourni dans APACHE-2.0.txt.
+https://github.com/JetBrains/kotlin/tree/v2.3.21
 
 Moteur de lecture : LibVLC Android 3.7.7, VideoLAN et contributeurs.
 Le composant org.videolan.android:libvlc-all:3.7.7 est publié sous

@@ -1,23 +1,23 @@
 # RAKOTO Player Android
 
-Bêta Android **1.0.0-beta.2**, indépendante de l'application Electron Windows. Mise à jour avec la même signature et conservation des données de la première bêta.
+Bêta Android **1.0.0-beta.3**, indépendante de l'application Electron Windows. Mise à jour avec la même signature et conservation des données de la première bêta.
 
 ## Plateforme et moteur
 
 - Android 6.0 / API 23 minimum ; compilation et cible API 36.
 - APK de diffusion ARM64 et ARMv7. Le build de développement ajoute x86_64 pour les tests.
-- Java natif et LibVLC **3.7.7** : aucun lecteur WebView ou HTML5.
-- Logo RAKOTO fourni par le propriétaire, palette bleue et blanche, touches des Hautes Terres.
+- Interface Kotlin 2.3.21 avec les vues Android natives ; services Java existants et LibVLC **3.7.7** conservés. Aucun WebView, Compose, Flutter ni runtime JavaScript.
+- Logo RAKOTO original, identité Lamba de la maquette : crème, terre rouge, or et vert. Thèmes clair, sombre et système.
 - Les bibliothèques ARM64 embarquées ont des segments ELF alignés à 16 Ko.
 
 ## Fonctionnalités
 
-Quatre onglets flottants en bas : **Audio, Vidéo, Coffre, Profil**.
+Quatre onglets en bas : **Musique, Vidéos, Coffre, Réglages**.
 
-- **Audio** : scan de toutes les entrées audio accessibles de MediaStore, y compris enregistrements, notifications et sonneries, sans filtre `IS_MUSIC`, de durée ou de taille. Mémoire partagée et volumes SD indexés ; ajout de dossiers par SAF pour les contenus non indexés. Recherche, playlists persistantes, favoris et reprise de lecture.
-- **Vidéo** : dossiers hiérarchiques comme dans un explorateur, vue de tous les fichiers, playlists et favoris. Tri par nom, taille, durée et date d'ajout, dans les deux sens. Les durées non détectées sont indiquées comme inconnues.
-- **Coffre** : création et confirmation d'un code à quatre chiffres, copies vidéo chiffrées, import, lecture avec navigation, tri, suppression de la copie privée et changement du code. Les fichiers d'origine restent à leur place et ne sont jamais supprimés automatiquement.
-- **Profil** : nom local, permissions, dossiers scannés et réglages du lecteur. Aucun compte en ligne.
+- **Audio** : scan de toutes les entrées audio accessibles de MediaStore, y compris enregistrements, notifications et sonneries, sans filtre `IS_MUSIC`, de durée ou de taille par défaut. Un filtre de durée facultatif masque des éléments sans supprimer le catalogue. Mémoire partagée et volumes SD indexés ; ajout de dossiers par SAF pour les contenus non indexés. Recherche, albums, artistes, dossiers, ajouts récents, playlists persistantes, favoris et reprise de lecture. Lecteur musical natif complet et file de lecture.
+- **Vidéo** : liste ou grille, dossiers hiérarchiques comme dans un explorateur, vue de tous les fichiers, playlists et favoris. Tri par nom, taille, durée et date d'ajout, dans les deux sens. Les durées non détectées sont indiquées comme inconnues.
+- **Coffre** : clavier PIN natif avec confirmation, copies vidéo chiffrées, import multiple avec recherche et filtres de durée, lecture avec navigation, tri, suppression de la copie privée et changement du code. Les fichiers d'origine restent à leur place et ne sont jamais supprimés automatiquement.
+- **Réglages** : nom du profil local, permissions, dossiers scannés, durée minimale facultative, thèmes, lecture en arrière-plan et vitesse vidéo par défaut. Aucun compte en ligne.
 
 Le catalogue utilise SQLite et n'a plus le plafond de 2 000 fichiers. Les fichiers publics sont lus à leur emplacement d'origine. Les scans et traitements du coffre se font hors du thread de l'interface.
 
@@ -29,7 +29,7 @@ Le tiroir audio flottant Windows, son visualiseur et ses déformations élastiqu
 
 ## Confidentialité
 
-Pas d'autorisation Internet, microphone ou `MANAGE_EXTERNAL_STORAGE`. Le scan demande `READ_MEDIA_AUDIO` / `READ_MEDIA_VIDEO` sur Android 13+, ou `READ_EXTERNAL_STORAGE` jusqu'à Android 12. Android 14+ peut limiter l'accès aux seules vidéos sélectionnées ; ce statut est affiché dans Profil. Les dossiers privés d'autres applications ne sont pas contournés. Le sélecteur SAF donne accès aux dossiers ou fichiers choisis.
+Pas d'autorisation Internet, microphone ou `MANAGE_EXTERNAL_STORAGE`. Le scan demande `READ_MEDIA_AUDIO` / `READ_MEDIA_VIDEO` sur Android 13+, ou `READ_EXTERNAL_STORAGE` jusqu'à Android 12. Android 14+ peut limiter l'accès aux seules vidéos sélectionnées ; ce statut est affiché dans Réglages. Les dossiers privés d'autres applications ne sont pas contournés. Le sélecteur SAF donne accès aux dossiers ou fichiers choisis.
 
 Le coffre utilise AES-256-GCM par blocs authentifiés de 256 Ko. Sa clé est enveloppée avec une clé dérivée du code par PBKDF2 et une clé Android Keystore non exportable. Noms et métadonnées du catalogue sont également chiffrés. Les essais sont limités avec temporisation persistante après cinq échecs. Le coffre se verrouille en arrière-plan et ferme la lecture privée ; les notifications ne révèlent pas les noms des vidéos. Voir [COFFRE.md](COFFRE.md).
 
@@ -48,10 +48,22 @@ Le build de diffusion nécessite votre clé PKCS12, alias `rakoto`. Fournir ses 
 ```powershell
 $env:RAKOTO_KEYSTORE_FILE = 'C:\chemin-prive\rakoto-release.p12'
 # Fournir RAKOTO_KEYSTORE_PASSWORD dans l'environnement du processus.
-.\gradlew.bat :app:assembleRelease :app:lintRelease
+.\gradlew.bat :app:assembleRelease :app:lintRelease -PsplitApks
 ```
 
 Sur le poste d'origine, `tools/build-android.ps1` conserve la clé dans `android/signing/` et protège son mot de passe avec DPAPI pour l'utilisateur Windows. **Sauvegarder cette clé et son mot de passe de façon privée** pour pouvoir livrer des mises à jour installables sur la même application. Ils sont exclus du dépôt et de l'APK. Une reconstruction signée par une autre clé demande la désinstallation de l'ancienne application.
+
+## Allègement
+
+Le moteur LibVLC est créé au premier besoin de lecture, ou pour rejoindre un service déjà actif. Les pochettes et miniatures sont chargées à la demande par deux tâches au maximum, avec une file bornée et un cache de 2 Mio sur les appareils low-RAM, 8 Mio autrement. Les listes réutilisent leurs lignes. Aucun faux visualiseur ne tourne en boucle. La timeline est inactive sans média et arrêtée en arrière-plan.
+
+La diffusion produit trois APK signés de même version : ARM64 seul, ARMv7 seul et universel ARM32+64. Les architectures x86 de développement ne sont pas incluses dans les APK publics. La réduction de taille vient du choix d’architecture, pas d’un changement des codecs. Mesurer la RAM et la fluidité sur les téléphones cibles avant de les annoncer comme validées.
+
+Tailles de la bêta 3 signée :
+
+- universal : 45,05 Mo (45047238 octets).
+- armeabi-v7a : 20,9 Mo (20902414 octets).
+- arm64-v8a : 24,6 Mo (24596606 octets).
 
 ## Architecture
 
@@ -61,7 +73,10 @@ Sur le poste d'origine, `tools/build-android.ps1` conserve la clé dans `android
 - `BrowserScreen.java` : quatre onglets, dossiers, tri, favoris, playlists et profil.
 - `MediaScanner.java` : MediaStore et parcours des dossiers autorisés via SAF.
 - `Vault.java` / `VaultFile.java` / `VaultProxy.java` : code, clés, copies chiffrées et lecture privée avec seek.
-- `Ui.java` : composants, icônes et illustration vectorielle légers.
+- `GasySkin.kt` / `GasyTheme.kt` : écrans Kotlin natifs, navigation, menus, thèmes et clavier du coffre.
+- `MusicPlayerView.kt` : lecteur audio natif raccordé au même service.
+- `MediaArtLoader.kt` : miniatures réelles à la demande et cache borné.
+- `Ui.java` : icônes vectorielles et composants partagés.
 - `app/src/androidTest/.../PlayerInstrumentation.java` : essais fonctionnels natifs sans capture d'écran.
 
 Les fichiers d'essai synthétiques ne sont pas inclus dans l'APK public. Voir [TESTS.md](TESTS.md) pour les contrôles réellement exécutés et leurs limites.

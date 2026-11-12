@@ -10,6 +10,8 @@ public final class MediaEntry {
   public final String uri;
   public String name, title, artist, mime, folder = "Fichiers ajoutés", source = "manual";
   public long size, durationMs, addedAt = System.currentTimeMillis(), modifiedAt;
+  public String album = "";
+  public int width, height;
   public boolean video;
 
   public MediaEntry(String uri, String name) {
@@ -68,7 +70,10 @@ public final class MediaEntry {
           .put("source", source)
           .put("duration", durationMs)
           .put("added", addedAt)
-          .put("modified", modifiedAt);
+          .put("modified", modifiedAt)
+          .put("album", album)
+          .put("width", width)
+          .put("height", height);
     } catch (Exception ignored) {
     }
     return object;
@@ -87,6 +92,9 @@ public final class MediaEntry {
     item.durationMs = object.optLong("duration");
     item.addedAt = object.optLong("added", System.currentTimeMillis());
     item.modifiedAt = object.optLong("modified");
+    item.album = object.optString("album", "");
+    item.width = object.optInt("width");
+    item.height = object.optInt("height");
     return item;
   }
 

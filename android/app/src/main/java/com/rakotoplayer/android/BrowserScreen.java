@@ -21,6 +21,8 @@ final class BrowserScreen extends LinearLayout {
   interface Actions {
     void play(List<MediaEntry> entries, int index);
 
+    void enqueue(MediaEntry entry);
+
     void pickMedia(boolean vault);
 
     void pickFolder();
@@ -38,60 +40,61 @@ final class BrowserScreen extends LinearLayout {
     void systemSettings();
   }
 
-  private interface Work<T> {
+  interface Work<T> {
     T run() throws Exception;
   }
 
-  private interface Done<T> {
+  interface Done<T> {
     void accept(T value);
   }
 
-  private final Activity activity;
-  private final Library library;
-  private final Actions actions;
-  private final Vault vault;
-  private final Handler handler = new Handler(Looper.getMainLooper());
-  private final ExecutorService data = Executors.newSingleThreadExecutor(),
+  GasySkin skin;
+  String groupValue = null;
+  final Activity activity;
+  final Library library;
+  final Actions actions;
+  final Vault vault;
+  final Handler handler = new Handler(Looper.getMainLooper());
+  final ExecutorService data = Executors.newSingleThreadExecutor(),
       jobs = Executors.newSingleThreadExecutor();
-  private final LinearLayout navigation, chips;
-  private final FrameLayout body;
-  private final ListView list;
-  private final LinearLayout emptyBox;
-  private final TextView heading, subtitle, scanStatus, pathLabel, emptyLabel;
-  private final EditText search;
-  private final Button emptyAction;
-  private final ImageButton add;
-  private final RowAdapter adapter = new RowAdapter();
-  private List<Row> rows = new ArrayList<>();
-  private int tab, sort, loadVersion;
-  private boolean ascending = true, busy;
-  private volatile boolean destroyed, scanning;
-  private final Set<AlertDialog> privateDialogs = new HashSet<>();
-  private final Set<ParcelFileDescriptor> pendingDescriptors =
-      Collections.synchronizedSet(new HashSet<>());
-  private String mode = "all", folder = "", query = "", playlistId, playlistName = "";
-  private final String[] modes = {"all", "folders"};
-  private ProgressDialog operation;
-  private AlertDialog pinDialog;
-  private long lastScan;
-  private String lastAccess = "";
-  private final Runnable searchChanged = this::reload;
-  private boolean active, scanPending;
-  private final Runnable mediaChanged = this::scan;
-  private final android.database.ContentObserver observer =
+  final LinearLayout navigation, chips;
+  final FrameLayout body;
+  final ListView list;
+  final LinearLayout emptyBox;
+  final TextView heading, subtitle, scanStatus, pathLabel, emptyLabel;
+  final EditText search;
+  final Button emptyAction;
+  final ImageButton add;
+  final RowAdapter adapter = new RowAdapter();
+  List<Row> rows = new ArrayList<>();
+  int tab, sort, loadVersion;
+  boolean ascending = true, busy;
+  volatile boolean destroyed, scanning;
+  final Set<AlertDialog> privateDialogs = new HashSet<>();
+  final Set<ParcelFileDescriptor> pendingDescriptors = Collections.synchronizedSet(new HashSet<>());
+  String mode = "all", folder = "", query = "", playlistId, playlistName = "";
+  final String[] modes = {"all", "folders"};
+  ProgressDialog operation;
+  AlertDialog pinDialog;
+  long lastScan;
+  String lastAccess = "";
+  final Runnable searchChanged = this::reload;
+  boolean active, scanPending;
+  final Runnable mediaChanged = this::scan;
+  final android.database.ContentObserver observer =
       new android.database.ContentObserver(handler) {
         @Override
         public void onChange(boolean selfChange) {
           scanPending = true;
-          if (active) {
+          if (active && library.preferences.getBoolean("scan_auto", true)) {
             handler.removeCallbacks(mediaChanged);
             handler.postDelayed(mediaChanged, 900);
           }
         }
       };
 
-  private static final class Row {
-    String title, detail, icon = "music", folder;
+  static final class Row {
+    String title, detail, icon = "music", folder, group;
     MediaEntry media;
     Library.Playlist playlist;
     long size, duration, added;
@@ -240,46 +243,54 @@ final class BrowserScreen extends LinearLayout {
     return navigation;
   }
 
-  private int dp(float value) {
+  int dp(float value) {
     return Ui.dp(activity, value);
   }
 
-  private LayoutParams lp(int width, int height) {
+  LayoutParams lp(int width, int height) {
     return new LayoutParams(width < 0 ? width : dp(width), height < 0 ? height : dp(height));
   }
 
-  private LinearLayout column() {
+  LinearLayout column() {
     LinearLayout view = new LinearLayout(activity);
     view.setOrientation(VERTICAL);
     return view;
   }
 
-  private LinearLayout row() {
+  LinearLayout row() {
     LinearLayout view = new LinearLayout(activity);
     view.setOrientation(HORIZONTAL);
     view.setGravity(Gravity.CENTER_VERTICAL);
     return view;
   }
 
-  private TextView text(String value, float size, int color) {
+  TextView text(String value, float size, int color) {
     return Ui.text(activity, value, size, color);
   }
 
-  private void toast(String message) {
+  void toast(String message) {
     if (!destroyed && active) Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
   }
 
-  private static String bytes(long size) {
+  static String bytes(long size) {
     if (size >= 1000000000L) return String.format(Locale.FRANCE, "%.1f Go", size / 1000000000.0);
     if (size >= 1000000) return String.format(Locale.FRANCE, "%.1f Mo", size / 1000000.0);
     return String.format(Locale.FRANCE, "%.0f Ko", size / 1000.0);
   }
 
-  private String duration(long value) {
+  String duration(long value) {
     return value > 0 ? Ui.time(value) : "Durée inconnue";
   }
 
-  private void select(int value) {
+  void installGasy() {
+    skin = new GasySkin(this);
+    skin.attach();
+    filters();
+    reload();
+  }
+
+  void select(int value) {
+    groupValue = null;
     if (tab == 2 && value != 2) lockVault();
     tab = value;
     mode = tab < 2 ? modes[tab] : "all";
@@ -309,6 +320,7 @@ final class BrowserScreen extends LinearLayout {
     restoreSort();
     filters();
     reload();
+    if (skin != null) skin.pageChanged();
     if (tab == 2 && !vault.unlocked())
       handler.post(
           () -> {
@@ -316,18 +328,18 @@ final class BrowserScreen extends LinearLayout {
           });
   }
 
-  private void restoreSort() {
-    sort = library.preferences.getInt("sort:" + tab, 0);
-    ascending = library.preferences.getBoolean("ascending:" + tab, true);
+  void restoreSort() {
+    sort = library.preferences.getInt("sort:" + tab, tab == 1 ? 3 : 0);
+    ascending = library.preferences.getBoolean("ascending:" + tab, tab != 1);
   }
 
-  private void filters() {
+  void filters() {
     chips.removeAllViews();
     String[] keys =
         tab == 0
-            ? new String[] {"all", "playlists", "favorites"}
+            ? new String[] {"all", "albums", "artists", "folders", "playlists", "favorites"}
             : tab == 1
-                ? new String[] {"folders", "all", "playlists", "favorites"}
+                ? new String[] {"all", "recent", "unread", "folders", "favorites", "playlists"}
                 : new String[] {"all", "lock"};
     for (String key : keys) {
       String label =
@@ -339,6 +351,7 @@ final class BrowserScreen extends LinearLayout {
                       ? "Playlists"
                       : "favorites".equals(key) ? "Favoris" : "Verrouiller";
       Button button = Ui.button(activity, label, false);
+      button.setTag(key);
       button.setTextSize(12);
       if (key.equals(mode)) button.setBackground(Ui.background(0xffdcecff, 14, activity));
       LayoutParams p = lp(-2, 40);
@@ -351,6 +364,7 @@ final class BrowserScreen extends LinearLayout {
               reload();
               return;
             }
+            groupValue = null;
             mode = key;
             playlistId = null;
             folder = "";
@@ -360,7 +374,11 @@ final class BrowserScreen extends LinearLayout {
     }
   }
 
-  private void menu(View anchor) {
+  void menu(View anchor) {
+    if (skin != null) {
+      skin.menu();
+      return;
+    }
     PopupMenu menu = new PopupMenu(activity, anchor);
     String[] labels =
         tab == 2
@@ -405,6 +423,7 @@ final class BrowserScreen extends LinearLayout {
         path = folder,
         term = query.toLowerCase(Locale.ROOT),
         playlist = playlistId;
+    final String selectedGroup = groupValue;
     final long generation = vault.generation();
     if (tab == 3) {
       profile();
@@ -427,6 +446,7 @@ final class BrowserScreen extends LinearLayout {
               : "Votre coffre privé\n\nCréez un code à 4 chiffres pour commencer.");
       emptyAction.setText(vault.configured() ? "Déverrouiller" : "Créer mon code");
       pathLabel.setText("Copies chiffrées sur cet appareil");
+      if (skin != null) skin.lockedVault();
       return;
     }
     emptyAction.setText(
@@ -443,6 +463,7 @@ final class BrowserScreen extends LinearLayout {
                     : "favorites".equals(mode)
                         ? "Favoris"
                         : tab == 2 ? "Vidéos privées" : "Tous les fichiers");
+    if (skin != null) skin.pageChanged();
     data.execute(
         () -> {
           try {
@@ -461,13 +482,43 @@ final class BrowserScreen extends LinearLayout {
                       ? vault.entries()
                       : library.entries(selected == 1, "favorites".equals(filter), playlist);
               List<MediaEntry> matches = new ArrayList<>();
+              int minimum = selected == 0 ? library.preferences.getInt("audio_min_seconds", 0) : 0;
               for (MediaEntry e : media)
-                if (term.isEmpty()
-                    || (e.title + " " + e.artist + " " + e.name + " " + e.folder)
-                        .toLowerCase(Locale.ROOT)
-                        .contains(term)) matches.add(e);
+                if ((minimum == 0 || e.durationMs >= minimum * 1000L)
+                    && (!"recent".equals(filter)
+                        || e.addedAt >= System.currentTimeMillis() - 14L * 86400000L)
+                    && (!"unread".equals(filter) || !library.played(e.uri))
+                    && (selectedGroup == null
+                        || ("albums".equals(filter) ? e.album : e.artist).equals(selectedGroup))
+                    && (term.isEmpty()
+                        || (e.title + " " + e.artist + " " + e.album + " " + e.name + " "
+                                + e.folder)
+                            .toLowerCase(Locale.ROOT)
+                            .contains(term))) matches.add(e);
               Library.sort(matches, order, asc);
-              if ("folders".equals(filter) && term.isEmpty()) {
+              if (("albums".equals(filter) || "artists".equals(filter)) && selectedGroup == null) {
+                Map<String, Row> groups = new LinkedHashMap<>();
+                Map<String, Integer> counts = new HashMap<>();
+                for (MediaEntry e : matches) {
+                  String key = "albums".equals(filter) ? e.album : e.artist;
+                  Row group = groups.get(key);
+                  if (group == null) {
+                    String name =
+                        key.isEmpty()
+                            ? ("albums".equals(filter) ? "Sans album" : "Artiste inconnu")
+                            : "Fichier local".equals(key) ? "Artiste inconnu" : key;
+                    group = new Row(name, "");
+                    group.group = key;
+                    group.icon = "albums".equals(filter) ? "music" : "person";
+                    groups.put(key, group);
+                  }
+                  counts.put(key, (counts.containsKey(key) ? counts.get(key) : 0) + 1);
+                }
+                for (Map.Entry<String, Row> group : groups.entrySet()) {
+                  group.getValue().detail = counts.get(group.getKey()) + " chanson(s)";
+                  result.add(group.getValue());
+                }
+              } else if ("folders".equals(filter) && term.isEmpty()) {
                 Map<String, Row> folders = new LinkedHashMap<>();
                 Map<String, Integer> counts = new HashMap<>();
                 String prefix = path.isEmpty() ? "" : path + "/";
@@ -536,6 +587,7 @@ final class BrowserScreen extends LinearLayout {
                                   : "Aucun média dans cette vue.\n"
                                       + "Autorisez le scan ou ajoutez un dossier.");
                   if (!term.isEmpty()) emptyAction.setVisibility(GONE);
+                  if (skin != null) skin.rowsChanged();
                 });
           } catch (Exception failure) {
             handler.post(
@@ -551,15 +603,18 @@ final class BrowserScreen extends LinearLayout {
                 });
           }
         });
-    list.setOnItemClickListener((parent, view, position, id) -> open(rows.get(position)));
+    list.setOnItemClickListener(
+        (parent, view, position, id) -> {
+          if (skin == null || !skin.isGrid()) open(rows.get(position));
+        });
     list.setOnItemLongClickListener(
         (parent, view, position, id) -> {
-          rowActions(rows.get(position), view);
+          if (skin == null || !skin.isGrid()) rowActions(rows.get(position), view);
           return true;
         });
   }
 
-  private Row mediaRow(MediaEntry e) {
+  Row mediaRow(MediaEntry e) {
     Row row = new Row(e.title, duration(e.durationMs) + " · " + bytes(e.size));
     row.media = e;
     row.icon = e.video ? "video" : "music";
@@ -567,7 +622,12 @@ final class BrowserScreen extends LinearLayout {
     return row;
   }
 
-  private void open(Row row) {
+  void open(Row row) {
+    if (row.group != null) {
+      groupValue = row.group;
+      reload();
+      return;
+    }
     if (row.folder != null) {
       folder = row.folder;
       reload();
@@ -604,7 +664,11 @@ final class BrowserScreen extends LinearLayout {
     }
   }
 
-  private void rowActions(Row row, View anchor) {
+  void rowActions(Row row, View anchor) {
+    if (skin != null) {
+      skin.rowMenu(row);
+      return;
+    }
     if (row.playlist != null) {
       new AlertDialog.Builder(activity)
           .setTitle(row.title)
@@ -715,7 +779,7 @@ final class BrowserScreen extends LinearLayout {
     menu.show();
   }
 
-  private void info(MediaEntry entry) {
+  void info(MediaEntry entry) {
     AlertDialog.Builder builder =
         new AlertDialog.Builder(activity)
             .setTitle(entry.name)
@@ -733,7 +797,7 @@ final class BrowserScreen extends LinearLayout {
     else builder.show();
   }
 
-  private void showPrivate(AlertDialog.Builder builder) {
+  void showPrivate(AlertDialog.Builder builder) {
     AlertDialog dialog = builder.create();
     privateDialogs.add(dialog);
     dialog.setOnDismissListener(d -> privateDialogs.remove(dialog));
@@ -741,7 +805,7 @@ final class BrowserScreen extends LinearLayout {
     dialog.show();
   }
 
-  private void namePlaylist(Library.Playlist existing) {
+  void namePlaylist(Library.Playlist existing) {
     EditText name = new EditText(activity);
     name.setSingleLine();
     name.setHint("Nom de la playlist");
@@ -777,7 +841,7 @@ final class BrowserScreen extends LinearLayout {
     dialog.show();
   }
 
-  private void choosePlaylist(MediaEntry entry) {
+  void choosePlaylist(MediaEntry entry) {
     data.execute(
         () -> {
           List<Library.Playlist> playlists = library.playlists(entry.video);
@@ -834,7 +898,11 @@ final class BrowserScreen extends LinearLayout {
         });
   }
 
-  private void sortDialog() {
+  void sortDialog() {
+    if (skin != null) {
+      skin.sort();
+      return;
+    }
     String[] labels = {"Nom", "Durée", "Taille", "Date d’ajout"};
     final int[] selected = {sort};
     final boolean[] asc = {ascending};
@@ -878,6 +946,12 @@ final class BrowserScreen extends LinearLayout {
   }
 
   boolean back() {
+    if (skin != null && skin.back()) return true;
+    if (groupValue != null) {
+      groupValue = null;
+      reload();
+      return true;
+    }
     if (tab >= 2) return false;
     if (playlistId != null) {
       playlistId = null;
@@ -897,9 +971,9 @@ final class BrowserScreen extends LinearLayout {
     return false;
   }
 
-  private final class RowAdapter extends BaseAdapter {
+  final class RowAdapter extends BaseAdapter {
     public int getCount() {
-      return rows.size();
+      return skin == null ? rows.size() : skin.rowCount();
     }
 
     public Row getItem(int position) {
@@ -911,6 +985,7 @@ final class BrowserScreen extends LinearLayout {
     }
 
     public View getView(int position, View recycled, ViewGroup parent) {
+      if (skin != null) return skin.rowView(position, recycled, parent);
       LinearLayout root;
       ImageView icon;
       TextView title, detail;
@@ -957,6 +1032,7 @@ final class BrowserScreen extends LinearLayout {
 
   void scan() {
     if (scanning || destroyed) return;
+    if (skin != null) skin.scanStarted();
     scanning = true;
     scanStatus.setVisibility(VISIBLE);
     scanStatus.setText("Scan des médias…");
@@ -975,6 +1051,7 @@ final class BrowserScreen extends LinearLayout {
                 () -> {
                   if (destroyed) return;
                   lastScan = SystemClock.elapsedRealtime();
+                  if (skin != null) skin.scanFinished(result);
                   scanStatus.setText(
                       result.audio
                           + " audio · "
@@ -1041,7 +1118,7 @@ final class BrowserScreen extends LinearLayout {
         false);
   }
 
-  private void progress(String stage, long done, long total) {
+  void progress(String stage, long done, long total) {
     handler.post(
         () -> {
           if (!destroyed && operation != null) {
@@ -1059,7 +1136,7 @@ final class BrowserScreen extends LinearLayout {
         });
   }
 
-  private <T> void job(String title, Work<T> work, Done<T> done, boolean progress) {
+  <T> void job(String title, Work<T> work, Done<T> done, boolean progress) {
     if (busy) {
       toast("Une opération est déjà en cours.");
       return;
@@ -1126,7 +1203,7 @@ final class BrowserScreen extends LinearLayout {
         });
   }
 
-  private EditText pinField(String hint) {
+  EditText pinField(String hint) {
     EditText field = new EditText(activity);
     field.setSingleLine();
     field.setHint(hint);
@@ -1138,7 +1215,7 @@ final class BrowserScreen extends LinearLayout {
     return field;
   }
 
-  private void withVault(Runnable next) {
+  void withVault(Runnable next) {
     if (vault.unlocked()) {
       next.run();
       return;
@@ -1146,7 +1223,11 @@ final class BrowserScreen extends LinearLayout {
     pin(false, next);
   }
 
-  private void pin(boolean replace, Runnable next) {
+  void pin(boolean replace, Runnable next) {
+    if (skin != null) {
+      skin.pin(replace, next);
+      return;
+    }
     if (pinDialog != null && pinDialog.isShowing()) return;
     boolean create = replace || !vault.configured();
     actions.secure(true);
@@ -1243,7 +1324,7 @@ final class BrowserScreen extends LinearLayout {
     dialog.show();
   }
 
-  private void changePin() {
+  void changePin() {
     if (!vault.configured()) {
       pin(
           false,
@@ -1266,6 +1347,7 @@ final class BrowserScreen extends LinearLayout {
 
   void lockVault() {
     vault.lock();
+    if (skin != null) skin.vaultLocked();
     loadVersion++;
     for (AlertDialog dialog : new ArrayList<>(privateDialogs)) dialog.dismiss();
     if (tab == 2) {
@@ -1285,7 +1367,7 @@ final class BrowserScreen extends LinearLayout {
     } else handler.postDelayed(expirePicker, 120000);
   }
 
-  private final Runnable expirePicker =
+  final Runnable expirePicker =
       () -> {
         lockVault();
         if (tab == 2) reload();
@@ -1295,9 +1377,10 @@ final class BrowserScreen extends LinearLayout {
     active = true;
     handler.removeCallbacks(expirePicker);
     String access = access();
-    if (scanPending
-        || !access.equals(lastAccess)
-        || SystemClock.elapsedRealtime() - lastScan > 30000) {
+    if (library.preferences.getBoolean("scan_auto", true)
+        && (scanPending
+            || !access.equals(lastAccess)
+            || SystemClock.elapsedRealtime() - lastScan > 30000)) {
       lastAccess = access;
       scanPending = false;
       scan();
@@ -1307,6 +1390,7 @@ final class BrowserScreen extends LinearLayout {
 
   void destroy() {
     destroyed = true;
+    if (skin != null) skin.destroy();
     lockVault();
     handler.removeCallbacksAndMessages(null);
     activity.getContentResolver().unregisterContentObserver(observer);
@@ -1324,7 +1408,7 @@ final class BrowserScreen extends LinearLayout {
     if (pinDialog != null) pinDialog.dismiss();
   }
 
-  private String access() {
+  String access() {
     if (Build.VERSION.SDK_INT >= 33) {
       boolean
           audio =
@@ -1349,7 +1433,11 @@ final class BrowserScreen extends LinearLayout {
         : "Accès aux médias non autorisé";
   }
 
-  private void profile() {
+  void profile() {
+    if (skin != null) {
+      skin.settings();
+      return;
+    }
     list.setVisibility(GONE);
     emptyBox.setVisibility(GONE);
     for (int i = body.getChildCount() - 1; i >= 0; i--) {
@@ -1423,7 +1511,7 @@ final class BrowserScreen extends LinearLayout {
     panel.addView(version);
   }
 
-  private void profileButton(LinearLayout panel, String label, Runnable action) {
+  void profileButton(LinearLayout panel, String label, Runnable action) {
     Button button = Ui.button(activity, label, false);
     LayoutParams p = lp(-1, 48);
     p.bottomMargin = dp(8);

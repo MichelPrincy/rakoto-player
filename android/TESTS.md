@@ -1,9 +1,11 @@
-# Validation de la bêta Android 2
+# Validation de la bêta Android 3
 
 ## Contrôles exécutés sur Windows
 
 - Compilation de l'APK de développement et du paquet de tests natifs avec JDK 17 / Gradle 8.13 / AGP 8.13.2.
 - Analyse statique Android Lint sans erreur bloquante.
+- Compilation de l’interface Kotlin native avec les services Java conservés.
+- Vérification des trois APK de diffusion : universel ARM, ARM64 seul, ARMv7 seul ; même clé de signature et code de version 3.
 - Compilation de diffusion optimisée et signée, vérification par `apksigner` et `zipalign`.
 - Inspection des ABI de diffusion : ARM64 et ARMv7, sans les bibliothèques x86 de l'émulateur.
 - Vérification des segments ELF ARM64 alignés à 16 Ko, notices LGPL présentes.
@@ -24,6 +26,8 @@ Reproduire les tests hôte avec JDK 17 et `ANDROID_HOME` :
 Aucun téléphone physique n'est connecté au poste. L'émulateur Android 11 a été installé et plusieurs démarrages sans interface ont été essayés, mais il reste hors ligne sur cette configuration Windows dépourvue d'accélération d'émulation opérationnelle. Aucun pilote système n'a été installé pour contourner cette limite.
 
 **Les tests de décodage et d'interaction Android ci-dessous sont compilés mais n'ont pas été exécutés avec succès sur ce poste.** La lecture, les permissions complètes/partielles, le scan d'une vraie carte SD, les playlists, le Keystore, le proxy du coffre et son verrouillage doivent encore être validés sur un appareil Android réel. Aucun test visuel ni aucune capture n'ont été effectués.
+
+La nouvelle interface Kotlin, les groupes albums/artistes, les modes liste/grille, le clavier PIN, les transitions de thème et le chargement différé du service doivent également être exercés sur téléphone. Aucune consommation RAM ni accélération mesurée sur appareil n’est annoncée. La séparation des ABI réduit effectivement les octets téléchargés ; elle ne constitue pas une mesure de fluidité.
 
 ## Suite native prête à exécuter
 

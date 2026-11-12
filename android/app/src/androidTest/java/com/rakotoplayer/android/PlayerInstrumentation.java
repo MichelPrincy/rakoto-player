@@ -169,6 +169,11 @@ public final class PlayerInstrumentation extends Instrumentation {
           new Intent(getTargetContext(), MainActivity.class)
               .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       activity = (MainActivity) startActivitySync(intent);
+      main(
+          () -> {
+            activity.preparePlaybackForTest();
+            return null;
+          });
       until(() -> main(() -> activity.playbackForTest() != null), "service connecté", 20000);
       service = main(() -> activity.playbackForTest());
       main(

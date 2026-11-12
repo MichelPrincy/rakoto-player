@@ -7,7 +7,6 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.*;
 import android.graphics.drawable.Icon;
-import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.*;
 import android.provider.Settings;
@@ -30,6 +29,13 @@ public class MainActivity extends Activity {
       READ_MEDIA = 106;
   private PlaybackService service;
   private Library library;
+  private MediaArtLoader artwork;
+  private MusicPlayerView musicPlayer;
+  private View lamba;
+  private boolean binding;
+  private boolean lastVideoUi;
+  private final List<Runnable> pendingPlayback = new ArrayList<>();
+  private ParcelFileDescriptor pendingPrivate;
   private boolean bound, visible, playerVisible, fullscreen, menuOpen, seeking, attached, pip;
   private int selectedVideo = -1;
   private BrowserScreen browser;
@@ -37,7 +43,7 @@ public class MainActivity extends Activity {
   private boolean externalPicker;
   private String artUri = "", lastError = "";
   private final Handler handler = new Handler(Looper.getMainLooper());
-  private final ExecutorService artworkWorker = Executors.newSingleThreadExecutor();
+  private final ExecutorService mediaWorker = Executors.newSingleThreadExecutor();
   private final PlaybackService.Listener listener = this::refresh;
   private final Runnable hideControls =
       () -> {
@@ -48,17 +54,17 @@ public class MainActivity extends Activity {
       new Runnable() {
         @Override
         public void run() {
-          if (visible) {
+          if (visible && service!=null && service.current!=null) {
             refreshTimeline();
             handler.postDelayed(this, 500);
           }
         }
       };
-  private LinearLayout root, libraryPage, drawer, controls, playerToolbar, audioContent;
+  private LinearLayout root, libraryPage, drawer, controls, playerToolbar;
   private FrameLayout content, playerPage, audioPlaceholder;
   private VLCVideoLayout video;
-  private ImageView album, drawerArt;
-  private TextView trackTitle, artist, drawerTitle, drawerArtist, time, duration, trackSelection;
+  private ImageView drawerArt;
+  private TextView drawerTitle, drawerArtist, time, duration, trackSelection;
   private ImageButton play, miniPlay;
   private SeekBar timeline, drawerProgress;
   private Intent pendingIntent;
@@ -69,10 +75,13 @@ public class MainActivity extends Activity {
         public void onServiceConnected(ComponentName name, IBinder binder) {
           service = ((PlaybackService.LocalBinder) binder).service();
           bound = true;
+          binding = false;
           if (visible) service.listen(listener);
           if (playerVisible) attachVideo();
           handleIntent(pendingIntent);
           pendingIntent = null;
+          for (Runnable command : new ArrayList<>(pendingPlayback)) command.run();
+          pendingPlayback.clear();
           refresh();
         }
 
@@ -80,23 +89,113 @@ public class MainActivity extends Activity {
         public void onServiceDisconnected(ComponentName name) {
           service = null;
           bound = false;
+          binding = false;
           attached = false;
         }
       };
 
   @Override
   public void onCreate(Bundle state) {
+    GasyTheme.configure(this);
+    setTheme(GasyTheme.dark ? R.style.AppThemeDark : R.style.AppTheme);
     super.onCreate(state);
+    GasyTheme.window(this);
+    artwork = new MediaArtLoader(this);
     library = new Library(this);
     setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
     buildUi();
     adaptLayout();
     pendingIntent = getIntent();
-    bindService(new Intent(this, PlaybackService.class), connection, BIND_AUTO_CREATE);
+    if (PlaybackService.running || Intent.ACTION_VIEW.equals(pendingIntent.getAction()))
+      ensureEngine(null);
     if (Build.VERSION.SDK_INT >= 33)
       getOnBackInvokedDispatcher()
           .registerOnBackInvokedCallback(
               android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::navigateBack);
+  }
+
+  private void ensureEngine(Runnable command) {
+    if (service != null) {
+      if (command != null) command.run();
+      return;
+    }
+    if (command != null) pendingPlayback.add(command);
+    if (!binding) {
+      binding = bindService(new Intent(this, PlaybackService.class), connection, BIND_AUTO_CREATE);
+      if (!binding) {
+        pendingPlayback.clear();
+        closePendingPrivate();
+        toast("Moteur de lecture indisponible");
+      }
+    }
+  }
+
+  private void closePendingPrivate() {
+    if (pendingPrivate != null) {
+      try {
+        pendingPrivate.close();
+      } catch (IOException ignored) {
+      }
+      pendingPrivate = null;
+    }
+  }
+
+  private void musicAction(String command) {
+    if (command.equals("back")) {
+      showLibrary();
+      return;
+    }
+    if (service == null) return;
+    switch (command) {
+      case "toggle":
+        service.toggle();
+        break;
+      case "previous":
+        service.next(-1);
+        break;
+      case "next":
+        service.next(1);
+        break;
+      case "shuffle":
+        service.shuffle = !service.shuffle;
+        library.preferences.edit().putBoolean("shuffle", service.shuffle).apply();
+        refresh();
+        break;
+      case "repeat":
+        service.repeat = (service.repeat + 1) % 3;
+        library.preferences.edit().putInt("repeat", service.repeat).apply();
+        refresh();
+        break;
+      case "volume":
+        volume();
+        break;
+      case "equalizer":
+        equalizer();
+        break;
+      case "options":
+        options(musicPlayer);
+        break;
+      case "queue":
+        List<MediaEntry> entries = new ArrayList<>(service.queue);
+        String[] titles = new String[entries.size()];
+        for (int i = 0; i < entries.size(); i++)
+          titles[i] = (i == service.queueIndex ? "▶  " : "") + entries.get(i).title;
+        AlertDialog dialog =
+            new AlertDialog.Builder(this)
+                .setTitle("File de lecture · " + entries.size())
+                .setItems(
+                    titles,
+                    (d, index) -> {
+                      if (index < service.queue.size()
+                          && service.queue.get(index).uri.equals(entries.get(index).uri))
+                        service.jumpTo(index);
+                    })
+                .setPositiveButton("Fermer", null)
+                .create();
+        hold(dialog);
+        dialog.show();
+        break;
+    }
   }
 
   private int dp(float value) {
@@ -177,13 +276,15 @@ public class MainActivity extends Activity {
           applyInsets();
           return insets;
         });
+    lamba = new LambaView(this);
+    root.addView(lamba, lp(-1, 5));
     content = new FrameLayout(this);
     root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
     buildLibrary();
     buildPlayer();
     buildDrawer();
     LinearLayout.LayoutParams navParams = lp(-1, 62);
-    navParams.setMargins(dp(12), dp(2), dp(12), dp(10));
+    navParams.setMargins(0, 0, 0, 0);
     root.addView(browser.navigation(), navParams);
     root.requestApplyInsets();
     reloadLibrary();
@@ -197,6 +298,14 @@ public class MainActivity extends Activity {
             new BrowserScreen.Actions() {
               public void play(List<MediaEntry> entries, int index) {
                 playEntries(entries, index);
+              }
+
+              public void enqueue(MediaEntry entry) {
+                ensureEngine(
+                    () -> {
+                      service.enqueue(entry);
+                      toast("Ajouté à la file de lecture");
+                    });
               }
 
               public void pickMedia(boolean vault) {
@@ -220,11 +329,10 @@ public class MainActivity extends Activity {
               }
 
               public void locked() {
+                closePendingPrivate();
                 for (AlertDialog dialog : new ArrayList<>(privateDialogs)) dialog.dismiss();
                 if (service != null && service.current != null && service.current.isPrivate()) {
                   service.lockPrivate();
-                  trackTitle.setText("RAKOTO Player");
-                  artist.setText("Vos médias locaux");
                   drawerTitle.setText("RAKOTO Player");
                   drawerArtist.setText("");
                   if (playerVisible) showLibrary();
@@ -242,6 +350,7 @@ public class MainActivity extends Activity {
                         Uri.parse("package:" + getPackageName())));
               }
             });
+    browser.installGasy();
     libraryPage = browser;
     content.addView(browser, new FrameLayout.LayoutParams(-1, -1));
   }
@@ -256,27 +365,8 @@ public class MainActivity extends Activity {
     audioPlaceholder = new FrameLayout(this);
     audioPlaceholder.setBackgroundColor(Ui.PAPER);
     playerPage.addView(audioPlaceholder, new FrameLayout.LayoutParams(-1, -1));
-    LinearLayout audio = column();
-    audioContent = audio;
-    audio.setGravity(Gravity.CENTER);
-    audio.setPadding(dp(28), dp(65), dp(28), dp(220));
-    audioPlaceholder.addView(audio, new FrameLayout.LayoutParams(-1, -1));
-    album = new ImageView(this);
-    album.setImageResource(R.drawable.rakoto_logo);
-    album.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-    album.setBackground(Ui.background(Ui.SOFT, 24, this));
-    album.setClipToOutline(true);
-    audio.addView(album, lp(220, 220));
-    trackTitle = text("RAKOTO Player", 23, Ui.NAVY);
-    trackTitle.setGravity(Gravity.CENTER);
-    trackTitle.setTypeface(null, Typeface.BOLD);
-    trackTitle.setMaxLines(2);
-    trackTitle.setPadding(0, dp(22), 0, 0);
-    audio.addView(trackTitle, lp(-1, -2));
-    artist = text("Vos médias locaux", 14, Ui.MUTED);
-    artist.setGravity(Gravity.CENTER);
-    artist.setPadding(0, dp(7), 0, 0);
-    audio.addView(artist);
+    musicPlayer = new MusicPlayerView(this, library, artwork, this::musicAction);
+    audioPlaceholder.addView(musicPlayer, new FrameLayout.LayoutParams(-1, -1));
     playerToolbar = row();
     playerToolbar.setPadding(dp(12), dp(8), dp(12), 0);
     FrameLayout.LayoutParams toolbarParams = new FrameLayout.LayoutParams(-1, dp(64), Gravity.TOP);
@@ -296,14 +386,14 @@ public class MainActivity extends Activity {
           else toast("Le plein écran immersif est disponible pour une vidéo.");
         });
     controls = column();
-    controls.setBackground(Ui.background(0xf0eff6ff, 23, this));
+    controls.setBackground(Ui.background(0xe6221914, 23, this));
     controls.setPadding(dp(13), dp(9), dp(13), dp(10));
     FrameLayout.LayoutParams controlsParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
     controlsParams.setMargins(dp(12), 0, dp(12), dp(12));
     playerPage.addView(controls, controlsParams);
     LinearLayout seek = row();
-    time = text("0:00", 11, Ui.MUTED);
-    duration = text("0:00", 11, Ui.MUTED);
+    time = text("0:00", 11, 0xfff3e7d3);
+    duration = text("0:00", 11, 0xfff3e7d3);
     timeline = new SeekBar(this);
     timeline.setMax(10000);
     seek.addView(time, lp(44, 40));
@@ -408,41 +498,44 @@ public class MainActivity extends Activity {
   }
 
   private void buildDrawer() {
-    drawer = row();
-    drawer.setPadding(dp(10), dp(7), dp(8), dp(7));
-    drawer.setBackground(Ui.background(0xffe5f1fc, 21, this));
-    LinearLayout.LayoutParams params = lp(-1, 76);
-    params.setMargins(dp(12), dp(5), dp(12), dp(8));
-    root.addView(drawer, params);
+    drawer = column();
+    drawer.setBackgroundColor(GasyTheme.card);
+    root.addView(drawer, lp(-1, 74));
     drawer.setVisibility(View.GONE);
-    drawerArt = new ImageView(this);
-    drawerArt.setImageResource(R.drawable.rakoto_logo);
-    drawerArt.setBackground(Ui.background(Color.WHITE, 12, this));
-    drawerArt.setClipToOutline(true);
-    drawerArt.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-    drawer.addView(drawerArt, lp(49, 49));
-    space(drawer, 10);
-    LinearLayout labels = column();
-    drawerTitle = text("RAKOTO Player", 13, Ui.NAVY);
-    drawerTitle.setTypeface(null, Typeface.BOLD);
-    drawerTitle.setSingleLine();
-    drawerTitle.setEllipsize(TextUtils.TruncateAt.END);
-    drawerArtist = text("Fichier local", 10, Ui.MUTED);
-    drawerArtist.setSingleLine();
-    drawerArtist.setEllipsize(TextUtils.TruncateAt.END);
-    labels.addView(drawerTitle);
-    labels.addView(drawerArtist);
     drawerProgress = new SeekBar(this);
     drawerProgress.setMax(10000);
     drawerProgress.setEnabled(false);
     drawerProgress.setPadding(0, 0, 0, 0);
     drawerProgress.setThumb(null);
-    labels.addView(drawerProgress, lp(-1, 12));
-    drawer.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
-    miniPlay = Ui.icon(this, "play", "Lire ou mettre en pause", true);
-    drawer.addView(miniPlay, lp(46, 46));
+    drawerProgress.setProgressTintList(
+        android.content.res.ColorStateList.valueOf(GasyTheme.primary));
+    drawer.addView(drawerProgress, lp(-1, 3));
+    LinearLayout inner = row();
+    inner.setPadding(dp(18), dp(8), dp(12), dp(8));
+    drawer.addView(inner, new LinearLayout.LayoutParams(-1, 0, 1));
+    drawerArt = new ImageView(this);
+    drawerArt.setBackground(Ui.background(GasyTheme.card, 10, this));
+    drawerArt.setClipToOutline(true);
+    drawerArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
+    inner.addView(drawerArt, lp(44, 44));
+    space(inner, 12);
+    LinearLayout labels = column();
+    drawerTitle = text("RAKOTO Player", 13, Ui.INK);
+    drawerTitle.setTypeface(null, Typeface.BOLD);
+    drawerTitle.setSingleLine();
+    drawerTitle.setEllipsize(TextUtils.TruncateAt.END);
+    drawerArtist = text("Fichier local", 11, Ui.MUTED);
+    drawerArtist.setSingleLine();
+    drawerArtist.setEllipsize(TextUtils.TruncateAt.END);
+    labels.addView(drawerTitle);
+    labels.addView(drawerArtist);
+    inner.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+    miniPlay = Ui.icon(this, "play", "Lire / Pause", true);
+    miniPlay.setBackground(Ui.background(GasyTheme.primary, 28, this));
+    inner.addView(miniPlay, lp(44, 44));
     ImageButton next = Ui.icon(this, "next", "Suivant", false);
-    drawer.addView(next, lp(43, 46));
+    next.setBackgroundColor(Color.TRANSPARENT);
+    inner.addView(next, lp(44, 44));
     click(
         miniPlay,
         () -> {
@@ -516,6 +609,18 @@ public class MainActivity extends Activity {
   }
 
   private void playPrivate(MediaEntry entry, ParcelFileDescriptor descriptor) {
+    if (service == null && visible) {
+      closePendingPrivate();
+      pendingPrivate = descriptor;
+      ensureEngine(
+          () -> {
+            if (pendingPrivate == descriptor) {
+              pendingPrivate = null;
+              playPrivate(entry, descriptor);
+            }
+          });
+      return;
+    }
     if (service == null || !visible) {
       try {
         descriptor.close();
@@ -571,9 +676,11 @@ public class MainActivity extends Activity {
 
   void playEntries(List<MediaEntry> entries, int index) {
     if (service == null) {
-      toast("Le moteur se prépare. Réessayez dans un instant.");
+      List<MediaEntry> copy = new ArrayList<>(entries);
+      ensureEngine(() -> playEntries(copy, index));
       return;
     }
+    closePendingPrivate();
     Intent foreground = new Intent(this, PlaybackService.class).setAction(PlaybackService.PLAY);
     if (Build.VERSION.SDK_INT >= 26) startForegroundService(foreground);
     else startService(foreground);
@@ -642,8 +749,6 @@ public class MainActivity extends Activity {
     if (service == null) return;
     MediaEntry current = service.current;
     if (current != null) {
-      trackTitle.setText(current.title);
-      artist.setText(current.artist);
       drawerTitle.setText(current.title);
       drawerArtist.setText(service.loading ? "Chargement…" : current.artist);
       loadArtwork(current);
@@ -653,6 +758,15 @@ public class MainActivity extends Activity {
     Ui.icon(miniPlay, playing ? "pause" : "play", true);
     drawer.setVisibility(current != null && !playerVisible && !pip ? View.VISIBLE : View.GONE);
     audioPlaceholder.setVisibility(!service.hasVideo && !pip ? View.VISIBLE : View.GONE);
+    if (lastVideoUi != service.hasVideo) {
+      lastVideoUi = service.hasVideo;
+      showControls();
+    }
+    if(!service.hasVideo)musicPlayer.update(service);
+    handler.removeCallbacks(tick);
+    if(visible&&current!=null)handler.postDelayed(tick,500);
+    playerToolbar.setVisibility(service.hasVideo && !fullscreen && !pip ? View.VISIBLE : View.GONE);
+    controls.setVisibility(service.hasVideo && !pip ? controls.getVisibility() : View.GONE);
     trackSelection.setText(service.loading ? "Analyse du média…" : selectedTracks());
     if (!service.error.isEmpty() && !service.error.equals(lastError)) {
       lastError = service.error;
@@ -669,6 +783,7 @@ public class MainActivity extends Activity {
     long length = Math.max(0, service.player.getLength()),
         position = Math.max(0, service.player.getTime());
     int progress = length > 0 ? (int) Math.min(10000, position * 10000 / length) : 0;
+    if(!service.hasVideo)musicPlayer.tick(service);
     timeline.setProgress(progress);
     timeline.setEnabled(length > 0 && service.player.isSeekable());
     drawerProgress.setProgress(progress);
@@ -1160,7 +1275,7 @@ public class MainActivity extends Activity {
     TextView about =
         text(
             "RAKOTO Player Android\n"
-                + "Version 1.0.0 bêta 2\n\n"
+                + "Version 1.0.0 bêta 3\n\n"
                 + "Lecture locale avec LibVLC 3.7.7 (VideoLAN). Aucun catalogue ou compte n’est"
                 + " nécessaire.\n\n"
                 + "La fenêtre flottante vidéo utilise le Picture-in-Picture Android. Le son en"
@@ -1206,64 +1321,15 @@ public class MainActivity extends Activity {
   }
 
   private void loadArtwork(MediaEntry entry) {
-    if (entry.isPrivate()) {
-      artUri = "";
-      album.setImageResource(R.drawable.rakoto_logo);
-      drawerArt.setImageResource(R.drawable.rakoto_logo);
-      return;
-    }
     if (entry.uri.equals(artUri)) return;
     artUri = entry.uri;
-    album.setImageResource(R.drawable.rakoto_logo);
-    drawerArt.setImageResource(R.drawable.rakoto_logo);
-    artworkWorker.execute(
-        () -> {
-          Bitmap image = null;
-          MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-          try (ParcelFileDescriptor fd =
-              getContentResolver().openFileDescriptor(Uri.parse(entry.uri), "r")) {
-            if (fd != null) {
-              retriever.setDataSource(fd.getFileDescriptor());
-              byte[] cover = retriever.getEmbeddedPicture();
-              if (cover != null) {
-                BitmapFactory.Options options = new BitmapFactory.Options();
-                options.inJustDecodeBounds = true;
-                BitmapFactory.decodeByteArray(cover, 0, cover.length, options);
-                options.inSampleSize = 1;
-                while (Math.max(options.outWidth, options.outHeight) / options.inSampleSize > 512)
-                  options.inSampleSize *= 2;
-                options.inJustDecodeBounds = false;
-                image = BitmapFactory.decodeByteArray(cover, 0, cover.length, options);
-              } else if (entry.video && Build.VERSION.SDK_INT >= 27)
-                image =
-                    retriever.getScaledFrameAtTime(
-                        1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 384, 216);
-            }
-          } catch (Exception ignored) {
-          } finally {
-            try {
-              retriever.release();
-            } catch (Exception ignored) {
-            }
-          }
-          Bitmap result = image;
-          if (result != null)
-            handler.post(
-                () -> {
-                  if (!isDestroyed() && entry.uri.equals(artUri)) {
-                    album.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    drawerArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    album.setImageBitmap(result);
-                    drawerArt.setImageBitmap(result);
-                  } else result.recycle();
-                });
-        });
+    artwork.load(drawerArt, entry, 160);
   }
 
   private void loadSubtitles(List<Uri> values) {
     if (service == null || service.current == null) return;
     String id = service.current.uri;
-    artworkWorker.execute(
+    mediaWorker.execute(
         () -> {
           try {
             File folder = new File(getCacheDir(), "subtitles/" + UUID.randomUUID());
@@ -1330,7 +1396,10 @@ public class MainActivity extends Activity {
                       | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                       | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                   : View.SYSTEM_UI_FLAG_VISIBLE);
-    playerToolbar.setVisibility(enabled || pip ? View.GONE : View.VISIBLE);
+    playerToolbar.setVisibility(
+        enabled || pip || service == null || !service.hasVideo ? View.GONE : View.VISIBLE);
+    lamba.setVisibility(enabled || pip ? View.GONE : View.VISIBLE);
+    if (!enabled) GasyTheme.window(this);
     applyInsets();
     showControls();
   }
@@ -1347,6 +1416,10 @@ public class MainActivity extends Activity {
   private void showControls() {
     handler.removeCallbacks(hideControls);
     if (controls == null || pip) return;
+    if (service == null || !service.hasVideo) {
+      controls.setVisibility(View.GONE);
+      return;
+    }
     controls.setVisibility(View.VISIBLE);
     if (fullscreen && !menuOpen && !seeking) handler.postDelayed(hideControls, 3000);
   }
@@ -1441,11 +1514,6 @@ public class MainActivity extends Activity {
   private void adaptLayout() {
     boolean landscape =
         getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-    audioContent.setGravity(landscape ? Gravity.TOP | Gravity.CENTER_HORIZONTAL : Gravity.CENTER);
-    audioContent.setPadding(dp(28), dp(landscape ? 68 : 65), dp(28), dp(landscape ? 150 : 220));
-    album.setVisibility(landscape ? View.GONE : View.VISIBLE);
-    trackTitle.setTextSize(landscape ? 17 : 23);
-    trackTitle.setPadding(0, dp(landscape ? 7 : 22), 0, 0);
     trackSelection.setVisibility(landscape ? View.GONE : View.VISIBLE);
     controls.getChildAt(0).setLayoutParams(lp(-1, landscape ? 32 : 40));
     controls.getChildAt(1).setLayoutParams(lp(-1, landscape ? 52 : 66));
@@ -1454,6 +1522,14 @@ public class MainActivity extends Activity {
   @Override
   public void onConfigurationChanged(Configuration configuration) {
     super.onConfigurationChanged(configuration);
+    if ("system".equals(library.preferences.getString("appearance", "system"))) {
+      boolean wasDark = GasyTheme.dark;
+      GasyTheme.configure(this);
+      if (wasDark != GasyTheme.dark) {
+        recreate();
+        return;
+      }
+    }
     adaptLayout();
     if (fullscreen) fullscreen(true);
     updatePip();
@@ -1462,7 +1538,8 @@ public class MainActivity extends Activity {
   private void navigateBack() {
     if (fullscreen) fullscreen(false);
     else if (playerVisible) showLibrary();
-    else if (!browser.back()) finish();
+    else if (browser.skin != null && browser.skin.back()) {
+    } else if (!browser.back()) finish();
   }
 
   // API 33+ uses the native OnBackInvokedCallback registered in onCreate.
@@ -1478,8 +1555,10 @@ public class MainActivity extends Activity {
   protected void onNewIntent(Intent intent) {
     super.onNewIntent(intent);
     setIntent(intent);
-    if (service == null) pendingIntent = intent;
-    else handleIntent(intent);
+    if (service == null) {
+      pendingIntent = intent;
+      ensureEngine(null);
+    } else handleIntent(intent);
   }
 
   private void handleIntent(Intent intent) {
@@ -1523,11 +1602,13 @@ public class MainActivity extends Activity {
   protected void onStop() {
     visible = false;
     browser.pause(externalPicker);
+    closePendingPrivate();
     video.setKeepScreenOn(false);
     handler.removeCallbacks(tick);
     handler.removeCallbacks(hideControls);
     if (service != null) {
       service.savePosition();
+      if (!pip && !library.preferences.getBoolean("background_audio", true)) service.pause();
       if (!pip) {
         service.unlisten(listener);
         detachVideo();
@@ -1539,14 +1620,21 @@ public class MainActivity extends Activity {
   @Override
   protected void onDestroy() {
     handler.removeCallbacksAndMessages(null);
-    artworkWorker.shutdownNow();
+    artwork.close();
+    mediaWorker.shutdownNow();
+    closePendingPrivate();
+    pendingPlayback.clear();
     browser.destroy();
     if (service != null) {
       service.unlisten(listener);
       detachVideo();
     }
-    if (bound) unbindService(connection);
+    if (bound || binding) unbindService(connection);
     super.onDestroy();
+  }
+
+  void preparePlaybackForTest() {
+    ensureEngine(null);
   }
 
   PlaybackService playbackForTest() {

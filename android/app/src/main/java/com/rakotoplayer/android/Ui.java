@@ -7,7 +7,7 @@ import android.view.View;
 import android.widget.*;
 
 final class Ui {
-  static final int BLUE = Color.rgb(37, 99, 235),
+  static int BLUE = Color.rgb(181, 68, 46),
       NAVY = Color.rgb(18, 59, 99),
       INK = Color.rgb(19, 46, 72),
       MUTED = Color.rgb(100, 116, 139),
@@ -91,6 +91,53 @@ final class Ui {
       paint.setStyle(Paint.Style.STROKE);
       Path p = new Path();
       switch (kind) {
+        case "scan":
+          canvas.drawArc(4, 4, 20, 20, 45, 280, false, paint);
+          canvas.drawLine(20, 5, 20, 11, paint);
+          canvas.drawLine(20, 11, 14, 11, paint);
+          break;
+        case "settings":
+          canvas.drawCircle(12, 12, 7, paint);
+          canvas.drawCircle(12, 12, 2.5f, paint);
+          for (int i = 0; i < 8; i++) {
+            double a = i * Math.PI / 4;
+            canvas.drawLine(
+                12 + (float) Math.cos(a) * 8,
+                12 + (float) Math.sin(a) * 8,
+                12 + (float) Math.cos(a) * 10,
+                12 + (float) Math.sin(a) * 10,
+                paint);
+          }
+          break;
+        case "shuffle":
+          canvas.drawLine(3, 5, 8, 5, paint);
+          canvas.drawLine(8, 5, 16, 19, paint);
+          canvas.drawLine(16, 19, 21, 19, paint);
+          canvas.drawLine(3, 19, 8, 19, paint);
+          canvas.drawLine(8, 19, 16, 5, paint);
+          canvas.drawLine(16, 5, 21, 5, paint);
+          canvas.drawLine(18, 2, 21, 5, paint);
+          canvas.drawLine(21, 5, 18, 8, paint);
+          canvas.drawLine(18, 16, 21, 19, paint);
+          canvas.drawLine(21, 19, 18, 22, paint);
+          break;
+        case "repeat":
+          p.moveTo(4, 10);
+          p.lineTo(4, 7);
+          p.quadTo(4, 4, 7, 4);
+          p.lineTo(20, 4);
+          p.lineTo(17, 1);
+          p.moveTo(20, 4);
+          p.lineTo(17, 7);
+          p.moveTo(20, 14);
+          p.lineTo(20, 17);
+          p.quadTo(20, 20, 17, 20);
+          p.lineTo(4, 20);
+          p.lineTo(7, 17);
+          p.moveTo(4, 20);
+          p.lineTo(7, 23);
+          canvas.drawPath(p, paint);
+          break;
         case "play":
           p.moveTo(8, 4);
           p.lineTo(20, 12);
