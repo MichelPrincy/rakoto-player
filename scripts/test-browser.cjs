@@ -67,6 +67,6 @@ app.whenReady().then(async()=>{
   await run(`document.documentElement.dataset.effects='lite';scrollTo({top:0,left:0,behavior:'instant'})`);await wait(120);
   if(base.startsWith('http://127.0.0.1'))await fs.writeFile(path.join(__dirname,'../assets/share.jpg'),(await win.webContents.capturePage()).toJPEG(88));
   check(errors.length===0,'No browser errors',errors);
- }catch(error){console.error(error.message);process.exitCode=1}
+ }catch(error){errors.push(error.message);console.error(error.message);process.exitCode=1}
  finally{await fs.writeFile(path.join(output,base.startsWith('http://127.')?'report-local.json':'report-published.json'),JSON.stringify({base,checks,errors},null,2));console.log(JSON.stringify({base,passed:checks.filter(c=>c.pass).length,failed:checks.filter(c=>!c.pass),errors}));win.destroy();app.exit(process.exitCode||0)}
 });

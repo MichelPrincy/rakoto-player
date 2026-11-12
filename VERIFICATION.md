@@ -1,3 +1,19 @@
+# Nouvelle illustration transparente du hero — 12 novembre 2026
+
+- Image fournie : « Jeunes Malgaches, musique et technologie.png » (1536 × 1024).
+- Exports WebP avec transparence préservée : 371 380 octets (bureau) et
+  119 124 octets (mobile). Aucun fond ou voile coloré ajouté à l’illustration.
+- Cadrage adapté au format 3:2 et suppression de l’ancien effet de feu et de
+  son moteur WebGL. Les textes restent identiques, hors descriptions alt FR/MG.
+- TypeScript, compilation et 8 tests Node passent. Les 36 contrôles Chromium
+  passent à nouveau (360 à 1440 px, FR/MG, menu, liens, audio et ressources).
+- Captures bureau/mobile examinées : transparence et boutons lisibles.
+  Le mobile est émulé ; aucun test sur téléphone physique n’est revendiqué.
+
+---
+
+## Historique du design précédent
+
 # Design du package « feu de camp » — 12 novembre 2026
 
 - Direction du ZIP appliquée dans la landing page existante : crème, terre rouge,

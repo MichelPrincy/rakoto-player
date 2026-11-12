@@ -27,7 +27,7 @@ test('SEO statique et versions réelles, sans avis ni disponibilité inventés',
  for(const token of ['og:title','og:description','og:image','twitter:card','twitter:title','twitter:description'])assert.ok(html.includes(token),token);
 });
 test('ressources optimisées, métadonnées de partage et indexation dans le sous-dossier',async()=>{
- for(const image of ['share.jpg','rakoto-hero-camp.webp','fonts/fraunces-regular.woff2','fonts/fraunces-italic.woff2','fonts/Fraunces-OFL.txt','screens/windows.webp','screens/equalizer.webp','screens/drawer.webp'])assert.ok((await stat(new URL('../docs/assets/'+image,import.meta.url))).size>0,image);
+ for(const image of ['share.jpg','rakoto-hero-malagasy.webp','rakoto-hero-malagasy-small.webp','fonts/fraunces-regular.woff2','fonts/fraunces-italic.woff2','fonts/Fraunces-OFL.txt','screens/windows.webp','screens/equalizer.webp','screens/drawer.webp'])assert.ok((await stat(new URL('../docs/assets/'+image,import.meta.url))).size>0,image);
  assert.match(await readFile(new URL('../docs/sitemap.xml',import.meta.url),'utf8'),/<loc>https:\/\/michelprincy.github.io\/rakoto-player\/<\/loc>/);
  assert.match(await readFile(new URL('../docs/robots.txt',import.meta.url),'utf8'),/Sitemap: https:\/\/michelprincy.github.io\/rakoto-player\/sitemap.xml/);
  for(const file of ['app.js','style.css'])assert.ok(gzipSync(await readFile(new URL('../docs/'+file,import.meta.url))).length<20000,file+' gzip budget');

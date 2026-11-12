@@ -17,10 +17,10 @@ are conceptual illustrations, not screenshots of released mobile interfaces.
 womanheadphone.png: supplied by the project owner; optimized copies used
 without changing the subject. Original logo supplied by the owner.
 
-Camp illustration: rakoto-hero-camp.webp, supplied by the project owner in
-rakoto-player-hero-package.zip. Displayed as supplied. Flame animation is a
-local masked WebGL distortion with a few procedural embers; no video or audio
-autoplay is used. Static fallback on reduced motion, lightweight mode or no WebGL.
+Current hero: Jeunes Malgaches, musique et technologie.png, supplied by the
+project owner. Responsive WebP exports preserve the original alpha channel.
+No background, tint, mask or fire animation is applied to the illustration.
+The camp illustration is retained as an earlier design resource only.
 
 Fraunces: self-hosted Latin WOFF2 subsets from Google Fonts, by Undercase Type.
 Redistributed under SIL Open Font License 1.1; see fonts/Fraunces-OFL.txt.

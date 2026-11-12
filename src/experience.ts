@@ -1,5 +1,4 @@
 import {remember,stored,text} from './content';
-import {createCampfire} from './campfire';
 
 /** Original procedural ambience. No samples, streaming or microphone access. */
 export class RakotoAmbience {
@@ -50,12 +49,6 @@ export function initExperience(){
  const lowPower=Boolean(device.connection?.saveData||(device.deviceMemory&&device.deviceMemory<=4)||(navigator.hardwareConcurrency&&navigator.hardwareConcurrency<=4));
  let lite=reduce.matches||stored('rakoto-motion')==='lite'||(stored('rakoto-motion')!=='full'&&lowPower);
  const ambience=new RakotoAmbience();let soundBusy=false,soundError=false;
- const campImage=document.querySelector<HTMLImageElement>('[data-camp-image]'),fireCanvas=document.querySelector<HTMLCanvasElement>('[data-camp-fire]');
- const fire=campImage&&fireCanvas?createCampfire(campImage,fireCanvas):null;
- let heroVisible=false;
- const updateFire=()=>{fire?.resize();fire?.setEnabled(heroVisible&&!lite&&!reduce.matches&&!document.hidden)};
- campImage?.addEventListener('load',updateFire,{signal});
- window.addEventListener('resize',()=>fire?.resize(),{signal,passive:true});
  const canvas=document.querySelector<HTMLCanvasElement>('#spectrum'),context=canvas?.getContext('2d');
  const bins=new Uint8Array(512);let spectrumFrame=0,scrollFrame=0,lastPaint=0,audioVisible=false;
  const reduceSoundMotion=()=>lite||reduce.matches;
@@ -103,7 +96,7 @@ export function initExperience(){
   for(const el of parallax){const box=el.getBoundingClientRect();if(box.bottom>0&&box.top<innerHeight)el.style.setProperty('--parallax',Math.max(-45,Math.min(45,(innerHeight*.5-box.top)*Number(el.dataset.parallax||0)))+'px')}
  };
  const queueScroll=()=>{if(!scrollFrame&&!document.hidden)scrollFrame=requestAnimationFrame(updateScroll)};
- const applyMotion=()=>{root.dataset.effects=lite?'lite':'full';setControls();queueScroll();animateSpectrum();updateFire()};
+ const applyMotion=()=>{root.dataset.effects=lite?'lite':'full';setControls();queueScroll();animateSpectrum()};
  document.querySelector('[data-motion-toggle]')?.addEventListener('click',()=>{lite=reduce.matches?true:!lite;remember('rakoto-motion',lite?'lite':'full');applyMotion()},{signal});
  const motionPreference=()=>{lite=reduce.matches||stored('rakoto-motion')==='lite'||(stored('rakoto-motion')!=='full'&&lowPower);applyMotion()};
  reduce.addEventListener('change',motionPreference,{signal});
@@ -112,15 +105,15 @@ export function initExperience(){
  },{threshold:.1,rootMargin:'0px 0px -20px 0px'}):null;
  document.querySelectorAll('[data-reveal]').forEach(el=>reveals?reveals.observe(el):el.classList.add('is-visible'));
  const scenes=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{
-  for(const entry of entries){entry.target.classList.toggle('in-view',entry.isIntersecting);if(entry.target.id==='accueil'){heroVisible=entry.isIntersecting;updateFire()}if(entry.target.id==='audio'){audioVisible=entry.isIntersecting;animateSpectrum()}}
+  for(const entry of entries){entry.target.classList.toggle('in-view',entry.isIntersecting);if(entry.target.id==='audio'){audioVisible=entry.isIntersecting;animateSpectrum()}}
  },{threshold:0}):null;
  document.querySelectorAll('[data-scene]').forEach(el=>scenes?.observe(el));
  window.addEventListener('scroll',queueScroll,{passive:true,signal});window.addEventListener('resize',queueScroll,{passive:true,signal});
  document.addEventListener('rakoto:language',setControls,{signal});
  // Never resume audio automatically, even after a previous opt-in or a tab return.
- document.addEventListener('visibilitychange',()=>{root.classList.toggle('tab-hidden',document.hidden);updateFire();if(document.hidden){void ambience.stop().then(()=>{setControls();animateSpectrum()});cancelAnimationFrame(scrollFrame);scrollFrame=0}else{queueScroll();setControls()}},{signal});
+ document.addEventListener('visibilitychange',()=>{root.classList.toggle('tab-hidden',document.hidden);if(document.hidden){void ambience.stop().then(()=>{setControls();animateSpectrum()});cancelAnimationFrame(scrollFrame);scrollFrame=0}else{queueScroll();setControls()}},{signal});
  document.addEventListener('freeze',()=>void ambience.stop(),{signal});
- window.addEventListener('pagehide',event=>{fire?.setEnabled(false);if(event.persisted){void ambience.stop().then(setControls);return}abort.abort();reveals?.disconnect();scenes?.disconnect();cancelAnimationFrame(scrollFrame);cancelAnimationFrame(spectrumFrame);fire?.dispose();void ambience.dispose()});
- window.addEventListener('pageshow',()=>{setControls();queueScroll();updateFire()},{signal});
+ window.addEventListener('pagehide',event=>{if(event.persisted){void ambience.stop().then(setControls);return}abort.abort();reveals?.disconnect();scenes?.disconnect();cancelAnimationFrame(scrollFrame);cancelAnimationFrame(spectrumFrame);void ambience.dispose()});
+ window.addEventListener('pageshow',()=>{setControls();queueScroll()},{signal});
  root.classList.add('motion-ready');applyMotion();draw();
 }
