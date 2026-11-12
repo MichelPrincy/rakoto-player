@@ -1,6 +1,6 @@
 # RAKOTO Player
 
-Site vitrine de RAKOTO Player en TypeScript, avec une identité bleue et blanche. La première section propose les installations Windows hors ligne / en ligne et l'APK Android.
+Landing page unique de RAKOTO Player en TypeScript : univers bleu nuit, image fournie par le propriétaire, captures Windows réelles et défilement narratif. Interface française et malagasy, ambiance sonore originale sur activation volontaire, téléchargements Windows hors ligne / en ligne et APK Android. iOS est annoncé sans lien App Store. Aucun framework d’animation ni service musical externe n’a été ajouté.
 
 L'application Android native est dans [`android/`](android/README.md) : interface Kotlin native, services Java et LibVLC 3.7.7, Android 6.0+ ARM 32/64 bits, version **1.0.0-beta.4**. Quatre onglets : Musique, Vidéos, Coffre, Réglages. Identité Lamba crème/terre rouge, thèmes clair et sombre, albums/artistes, miniatures réelles, liste/grille vidéo, scan MediaStore et dossiers autorisés, playlists, favoris et coffre chiffré avec clavier PIN. Le moteur est chargé à la demande. Trois APK : ARM64 allégé, ARMv7 allégé et universel. Le coffre déplace les vidéos et images après authentification complète et comparaison SHA-256 ; Android peut demander un consentement. Les retraits refusés restent à terminer. La restauration restitue les extensions et la visibilité en galerie. Les commandes vidéo sont fixes et Retour arrête la vidéo. Le titre sélectionné reste stable, sans adresse fd://. Les tests du chiffrement et des tris sont passés ; les limites de validation Android sont documentées dans [`android/TESTS.md`](android/TESTS.md).
 
@@ -24,18 +24,26 @@ npm test
 npm run preview
 ```
 
-L’aperçu local est servi sur `http://127.0.0.1:4173`. Modifier les sources de `src/`, puis exécuter `npm run build` et inclure les changements de `docs/` dans le prochain commit.
+L’aperçu local est servi sur `http://127.0.0.1:4173/rakoto-player/` et à la racine. Modifier les sources de `src/`, puis exécuter `npm run build` et inclure les changements de `docs/` dans le prochain commit.
 
 ## Organisation
 
-- `src/index.html` : structure et textes de la vitrine.
+- `src/index.html` : document et métadonnées de la vitrine.
+- `src/page.mjs` : composition sémantique unique, rendue en HTML à la compilation.
+- `src/content.ts` : dictionnaires FR/MG complets, persistance et métadonnées localisées.
+- `src/experience.ts` : entrées narratives, parallaxe bornée, mode léger, synthèse et analyse audio réelles.
 - `src/style.css` : identité visuelle et mise en page responsive.
-- `src/client.ts` : téléchargements, menu mobile et aperçu du mini-lecteur.
+- `src/client.ts` : téléchargements, langue, menu mobile, captures agrandies et partage volontaire.
 - `assets/` : logo et illustrations RAKOTO.
 - `public/release.json` : versions, tailles, empreintes SHA-256 et URL des installateurs Windows et de l'APK Android.
 - `android/` : sources de l'application Android, Gradle Wrapper, notices et tests natifs.
 - `docs/` : site prêt à publier sur GitHub Pages.
-- `tests/` : contrôle des chemins et des téléchargements dans le client compilé.
+- `tests/` : chemins, téléchargements, traductions, ancres, SEO, ressources et budgets de transfert.
+- `SEO.md` : stratégie française, préparation anglaise et limites d’indexation de la traduction côté client.
+
+Le choix FR/MG et l’intensité des effets sont mémorisés. Même si le visiteur avait activé le son, une nouvelle visite reste silencieuse jusqu’à un nouveau clic. Les effets sont réduits avec `prefers-reduced-motion`, l’économie de données ou un appareil signalant peu de ressources. Les animations hors écran et le son dans un onglet masqué sont suspendus.
+
+Les captures Windows affichent des données de démonstration. Les appareils Android et iOS sont des aperçus conceptuels identifiés comme tels ; ils ne sont pas présentés comme des captures d’applications. Les crédits audio et visuels sont dans `assets/AUDIO-NOTICE.txt` et dans le footer.
 
 ## Téléchargements
 

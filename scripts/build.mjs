@@ -2,6 +2,8 @@ import {build} from 'esbuild';
 import {readFile,mkdir,writeFile,cp} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
+import {renderPage,escape} from '../src/page.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const output=path.join(root,'docs');
 const manifest=JSON.parse(await readFile(path.join(root,'public/release.json'),'utf8'));
@@ -27,7 +29,20 @@ if(manifest.android){
   }
 }
 const downloadOrigin=new URL(manifest.offline.url).origin;
+const copyModule=await build({entryPoints:[path.join(root,'src/content.ts')],bundle:true,write:false,format:'esm',platform:'node',target:'es2022'});
+const {fr}=await import('data:text/javascript;base64,'+Buffer.from(copyModule.outputFiles[0].text).toString('base64'));
 let html=await readFile(path.join(root,'src/index.html'),'utf8');
+html=html.replace('<!-- landing -->',renderPage(fr,manifest)).replace(/\{\{([^}]+)\}\}/g,(_,key)=>{
+ if(!(key in fr))throw new Error('Texte français manquant : '+key);return escape(fr[key]);
+});
+const canonical='https://michelprincy.github.io/rakoto-player/';
+const schema={ '@context':'https://schema.org','@graph':[
+ {'@type':'WebSite','@id':canonical+'#website',name:'RAKOTO Player',url:canonical,inLanguage:'fr'},
+ {'@type':'SoftwareApplication','@id':canonical+'#windows',name:'RAKOTO Player',url:canonical,description:fr['meta.description'],applicationCategory:'MultimediaApplication',operatingSystem:'Windows 10 / Windows 11 x64',softwareVersion:manifest.version,inLanguage:'fr',downloadUrl:manifest.offline.url,fileSize:manifest.offline.bytes+' bytes',offers:{'@type':'Offer',price:0},featureList:['Lecture audio et vidéo locale','Pistes audio et sous-titres','Bibliothèque et playlists','Mini-lecteur flottant Windows']},
+ ...(manifest.android?[{'@type':'SoftwareApplication','@id':canonical+'#android',name:'RAKOTO Player Android',url:canonical+'#android',description:fr['android.description'],applicationCategory:'MultimediaApplication',operatingSystem:'Android '+manifest.android.minAndroid+' et plus, ARM',softwareVersion:manifest.android.version,inLanguage:'fr',downloadUrl:manifest.android.url,offers:{'@type':'Offer',price:0}}]:[])
+]};
+html=html.replace('<!-- software-schema -->','<script type="application/ld+json" data-software>'+JSON.stringify(schema).replaceAll('<','\\u003c')+'</script>');
+html=html.replace('</head>','<script type="application/json" id="release-data">'+JSON.stringify(manifest).replaceAll('<','\\u003c')+'</script>\n</head>');
 html=html.replaceAll('href="/downloads/','href="'+downloadOrigin+'/downloads/')
   .replaceAll('href="/favicon.png"','href="./assets/logo.png"')
   .replaceAll('href="/','href="./').replaceAll('src="/','src="./');
@@ -39,4 +54,12 @@ await cp(path.join(root,'src/style.css'),path.join(output,'style.css'));
 await writeFile(path.join(output,'release.json'),JSON.stringify(manifest,null,2)+'\n');
 await writeFile(path.join(output,'.nojekyll'),'');
 await build({entryPoints:[path.join(root,'src/client.ts')],outfile:path.join(output,'app.js'),bundle:true,minify:true,target:'es2022',format:'iife'});
+// Fingerprinted assets prevent an old cached stylesheet from breaking a new page.
+for(const file of ['app.js','style.css']){
+ const bytes=await readFile(path.join(output,file));
+ const hash=createHash('sha256').update(bytes).digest('hex').slice(0,10),extension=path.extname(file);
+ const named=path.basename(file,extension)+'.'+hash+extension;
+ await writeFile(path.join(output,named),bytes);html=html.replace('./'+file,'./'+named);
+}
+await writeFile(path.join(output,'index.html'),html);
 console.log('Site compilé dans docs/ — compatible avec GitHub Pages et les sous-dossiers.');

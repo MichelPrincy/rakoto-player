@@ -1,0 +1,18 @@
+Brume des Hautes Terres — RAKOTO Player website ambience
+
+Original procedural composition and sound design created for this project.
+Sine/triangle synthesis, 76 BPM, with no recordings, third-party songs,
+samples, streaming services or microphone input.
+
+The generated ambience is dedicated to the public domain under CC0 1.0:
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The website starts silently. Sound requires a deliberate button press.
+The visualizer analyses the site's generated audio only when it is active.
+Otherwise its static shape is explicitly identified as decorative.
+
+Window and equalizer images: actual RAKOTO Player Windows application,
+captured with demonstration data. Android and iOS device compositions
+are conceptual illustrations, not screenshots of released mobile interfaces.
+womanheadphone.png: supplied by the project owner; optimized copies used
+without changing the subject. Original logo supplied by the owner.
