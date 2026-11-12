@@ -161,9 +161,8 @@ class NativePlayer extends EventEmitter {
       if(this.loaded) this.emit('update',this.snapshot('state'));
     }
     if(message.event==='file-loaded') {
-      this.loaded=true;
-      this.loadWait?.resolve();this.loadWait=null;
-      this.emit('update',this.snapshot('loaded'));
+      if(this.loadWait){this.loadWait.resolve();this.loadWait=null}
+      else{this.loaded=true;this.emit('update',this.snapshot('loaded'))}
     }
     if(message.event==='end-file' && ['eof','error'].includes(message.reason)) {
       if(this.loadWait&&!this.loadWait.started)return;
@@ -178,7 +177,8 @@ class NativePlayer extends EventEmitter {
     this.serial++;
     this.id=id;
     this.loaded=false;
-    this.state={};
+    const windowId=this.state['window-id'];
+    this.state=windowId?{'window-id':windowId}:{};
     let timer;
     const loaded=new Promise((resolve,reject)=>{
       const finish=fn=>value=>{clearTimeout(timer);fn(value)};
@@ -195,6 +195,13 @@ class NativePlayer extends EventEmitter {
         sid:allowed.sid(options.sid)?String(options.sid):'auto'
       }]);
       await loaded;
+      // Observed properties only emit when they change. A reused VO can retain the
+      // same handle (and two films the same duration), so refresh the new snapshot.
+      await Promise.all(watched.map(async name=>{
+        const value=await this.send(['get_property',name]).catch(()=>null);
+        if(value!==null||name!=='window-id')this.state[name]=value;
+      }));
+      this.loaded=true;this.emit('update',this.snapshot('loaded'));
       await this.send(['set_property','pause',Boolean(options.paused)]);
     }catch(error){this.loadWait?.reject(error);this.loadWait=null;throw error}
     finally{clearTimeout(timer)}

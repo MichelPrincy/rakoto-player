@@ -53,6 +53,7 @@ module.exports=async({main,app,openPaths,showStartup,advanced,changeWindow,store
   await run(`document.querySelector('.video-session-row[title="${other.fileName}"]').click()`);
   await until(async()=>(await state()).id===other.id&&(await state()).loaded,'clic réel sur un voisin dans la liste normale');
   check((await state()).id===other.id,'Le clic sur la liste normale ouvre réellement le voisin');
+  check(Number(advanced.player.state['window-id'])>0,'La fenêtre vidéo native reste identifiée après le changement de film');
   await run(`document.querySelector('.video-session-row[title="Film 2.mkv"]').click()`);
   await until(async()=>(await state()).id===payload.selectedId&&(await state()).loaded,'retour au film choisi');
   await advanced.player.set('pause',true);
@@ -81,6 +82,7 @@ module.exports=async({main,app,openPaths,showStartup,advanced,changeWindow,store
   await overlay(`document.querySelector('.session-row[data-id="${fromFullscreen.id}"]').click()`);
   await until(async()=>(await state()).id===fromFullscreen.id&&(await state()).loaded,'clic du voisin en plein écran');
   check((await state()).id===fromFullscreen.id,'Le clic depuis la liste plein écran change réellement de film');
+  check(Number(advanced.player.state['window-id'])>0,'Identifiant vidéo conservé aussi en plein écran');
   await overlay(`document.querySelector('.session-row[data-id="${payload.selectedId}"]').click()`);
   await until(async()=>(await state()).id===payload.selectedId&&(await state()).loaded,'retour depuis la liste plein écran');
   await overlay(`window.dispatchEvent(new KeyboardEvent('keydown',{code:'Escape',bubbles:true}))`);await delay(100);
@@ -94,6 +96,7 @@ module.exports=async({main,app,openPaths,showStartup,advanced,changeWindow,store
   await run('rakotoTest.play('+JSON.stringify(payload.session.items[0].id)+');rakotoTest.play('+JSON.stringify(payload.session.items[3].id)+')');
   await until(async()=>(await state()).id===payload.session.items[3].id&&(await state()).loaded,'sélections rapides');
   check((await state()).id===payload.session.items[3].id,'Deux sélections rapides : le dernier clic gagne');
+  check(Number(advanced.player.state['window-id'])>0&&(await state()).duration>0,'Fenêtre vidéo et durée correctes après sélections rapides');
   await store();await delay(150);const saved=JSON.parse(await fs.readFile(stateFile,'utf8'));
   check(saved.entries?.length===1&&Boolean(saved.entries[0].probe.audio.length),'Métadonnées musicales en cache sans conserver les films');
   check(saved.libraryVersion===3&&saved.paths.length===1&&saved.paths[0].endsWith('son.mp3'),'Le fichier sauvegardé ne contient que la musique');
