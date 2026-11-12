@@ -3,6 +3,8 @@
 - Image fournie : « Jeunes Malgaches, musique et technologie.png » (1536 × 1024).
 - Exports WebP avec transparence préservée : 371 380 octets (bureau) et
   119 124 octets (mobile). Aucun fond ou voile coloré ajouté à l’illustration.
+  À la demande du propriétaire, seul le bas se fond par un masque alpha CSS
+  (de 82 % à 100 % de la hauteur), sans modifier le fichier transparent.
 - Cadrage adapté au format 3:2 et suppression de l’ancien effet de feu et de
   son moteur WebGL. Les textes restent identiques, hors descriptions alt FR/MG.
 - TypeScript, compilation et 8 tests Node passent. Les 36 contrôles Chromium

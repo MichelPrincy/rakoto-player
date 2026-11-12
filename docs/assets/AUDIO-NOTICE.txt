@@ -19,7 +19,8 @@ without changing the subject. Original logo supplied by the owner.
 
 Current hero: Jeunes Malgaches, musique et technologie.png, supplied by the
 project owner. Responsive WebP exports preserve the original alpha channel.
-No background, tint, mask or fire animation is applied to the illustration.
+No background, tint or fire animation is applied to the illustration.
+A CSS alpha fade softens only its bottom edge into the existing hero surface.
 The camp illustration is retained as an earlier design resource only.
 
 Fraunces: self-hosted Latin WOFF2 subsets from Google Fonts, by Undercase Type.
