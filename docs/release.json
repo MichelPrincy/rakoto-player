@@ -15,35 +15,35 @@
     "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-2.2.3-Online-x64.exe"
   },
   "android": {
-    "version": "1.0.0-beta.3",
-    "file": "RAKOTO-Player-Android-1.0.0-beta.3.apk",
-    "bytes": 45047238,
-    "sha256": "90295fd3fcb1822af3d97bfc950114056d41312d0f17763fbe8ee533b772ffd9",
-    "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-Android-1.0.0-beta.3.apk",
+    "version": "1.0.0-beta.4",
+    "file": "RAKOTO-Player-Android-1.0.0-beta.4.apk",
+    "bytes": 44936153,
+    "sha256": "068fccf50e21d219f7fa07337d7d5f803e144d0064a509658c04475ac78604ce",
+    "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-Android-1.0.0-beta.4.apk",
     "minAndroid": "6.0",
     "abis": [
       "arm64-v8a",
       "armeabi-v7a"
     ],
-    "fallbackUrl": "https://github.com/MichelPrincy/rakoto-player/releases/download/android-v1.0.0-beta.3/RAKOTO-Player-Android-1.0.0-beta.3.apk",
+    "fallbackUrl": "https://github.com/MichelPrincy/rakoto-player/releases/download/android-v1.0.0-beta.4/RAKOTO-Player-Android-1.0.0-beta.4.apk",
     "variants": [
       {
-        "sha256": "b0d4833b4a10a940f7e2e0c774b20035db02593a58f9f07767aaf39ddfe303ab",
-        "file": "RAKOTO-Player-Android-1.0.0-beta.3-armeabi-v7a.apk",
-        "bytes": 20902414,
+        "bytes": 20791332,
         "abi": "armeabi-v7a",
-        "version": "1.0.0-beta.3",
-        "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-Android-1.0.0-beta.3-armeabi-v7a.apk",
-        "fallbackUrl": "https://github.com/MichelPrincy/rakoto-player/releases/download/android-v1.0.0-beta.3/RAKOTO-Player-Android-1.0.0-beta.3-armeabi-v7a.apk"
+        "file": "RAKOTO-Player-Android-1.0.0-beta.4-armeabi-v7a.apk",
+        "sha256": "54904cae369653c9c580596d2641bfe56e948b54eb1801918535faed3670f8a9",
+        "version": "1.0.0-beta.4",
+        "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-Android-1.0.0-beta.4-armeabi-v7a.apk",
+        "fallbackUrl": "https://github.com/MichelPrincy/rakoto-player/releases/download/android-v1.0.0-beta.4/RAKOTO-Player-Android-1.0.0-beta.4-armeabi-v7a.apk"
       },
       {
-        "sha256": "db244975be02ec12044bf881d2345f8a71cfd954feb9897f311cbfb1f00f1000",
-        "file": "RAKOTO-Player-Android-1.0.0-beta.3-arm64-v8a.apk",
-        "bytes": 24596606,
+        "bytes": 24485527,
         "abi": "arm64-v8a",
-        "version": "1.0.0-beta.3",
-        "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-Android-1.0.0-beta.3-arm64-v8a.apk",
-        "fallbackUrl": "https://github.com/MichelPrincy/rakoto-player/releases/download/android-v1.0.0-beta.3/RAKOTO-Player-Android-1.0.0-beta.3-arm64-v8a.apk"
+        "file": "RAKOTO-Player-Android-1.0.0-beta.4-arm64-v8a.apk",
+        "sha256": "0601c0f851a4dc6caeaaa50e4469eb46687428fd7fec6bc2dc5a66b3bb87075c",
+        "version": "1.0.0-beta.4",
+        "url": "https://rakoto-player.exquisitecurl1.chatgpt.site/downloads/RAKOTO-Player-Android-1.0.0-beta.4-arm64-v8a.apk",
+        "fallbackUrl": "https://github.com/MichelPrincy/rakoto-player/releases/download/android-v1.0.0-beta.4/RAKOTO-Player-Android-1.0.0-beta.4-arm64-v8a.apk"
       }
     ]
   }
