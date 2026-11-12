@@ -1,0 +1,58 @@
+.app[data-theme=nature]{--blue:#246db7;--electric:#318ce7;--ink:#12304b;--muted:#506b7d;--bg:#f3f8fb;--surface:#f8fafc;--soft:#e6f2f8;--line:#d2e3eb;--nav:#123b63;--nav-text:#c1dcf0;--growth:#a7c957;--earth:#a65a3a;--accent-rgb:49,140,231}
+.app[data-theme=ocean]{--blue:#147994;--electric:#22a8c3;--ink:#14354a;--muted:#4c6a7a;--bg:#edf8fb;--surface:#f8fdff;--soft:#dff5fa;--line:#cce8ee;--nav:#10354b;--nav-text:#bce8f3;--growth:#67d6d9;--earth:#996448;--accent-rgb:34,168,195}
+.app[data-theme=forest]{--blue:#245f86;--electric:#337a91;--ink:#233e36;--muted:#526e62;--bg:#f0f6ef;--surface:#fbfcf7;--soft:#e4eee2;--line:#d0dfd1;--nav:#254842;--nav-text:#c9e3d5;--growth:#a7c957;--earth:#a65a3a;--accent-rgb:51,122,145}
+.app[data-theme=light]{--accent-rgb:37,99,235;--growth:#8eb55f;--earth:#a65a3a}
+.app[data-theme=dark]{--accent-rgb:77,161,242;--growth:#98c788;--earth:#b77b64}
+.app{--sway-x:0px;--sway-y:0px;--stretch:1;position:relative;isolation:isolate}
+.app .primary{background:linear-gradient(130deg,var(--blue),var(--electric))!important}
+.hero.terroir>img{width:100%;object-position:center 48%}
+.hero.terroir:after{background:linear-gradient(91deg,#123b63f5 12%,#123b63d9 33%,#123b6340 66%,#123b631a)}
+.app[data-theme=forest] .hero.terroir:after{background:linear-gradient(90deg,#254842fa,#254842a8 50%,#2548420a)}
+.hero.terroir .hero-tag i,.live i{background:var(--growth);box-shadow:0 0 9px var(--growth)}
+.hero-caption span:last-child{border-bottom:2px solid var(--earth);padding-bottom:3px}
+.app[data-motion=full] button:active:not(:disabled){scale:.96}
+.app[data-motion=reduced] button:active:not(:disabled){scale:.99}
+.app .notice{border-radius:22px;background:var(--nav)}
+.app .range{background:linear-gradient(to right,var(--electric) 0 var(--fill,0%),var(--line) var(--fill,0%) 100%)}
+.app[data-motion=off] *, .app[data-motion=off] *::before, .app[data-motion=off] *::after{animation:none!important;transition:none!important}
+.app[data-motion=reduced] .drawer-art img{animation:none}
+.settings-card .setting-toggle{display:flex;align-items:center;justify-content:space-between}
+.settings-card .setting-toggle input{accent-color:var(--electric)}
+.floating{padding:8px}
+.app.floating .drawer-shell{--drawer-top:248,251,252;--drawer-mid:232,244,255;--drawer-end:184,223,255;position:relative;isolation:isolate;border-radius:26px;border:1px solid rgba(var(--accent-rgb),.37);overflow:visible;color:var(--ink);background:linear-gradient(140deg,rgba(var(--drawer-top),calc(.93 * var(--drawer-alpha,1))),rgba(var(--drawer-mid),calc(.95 * var(--drawer-alpha,1))) 68%,rgba(var(--drawer-end),calc(.85 * var(--drawer-alpha,1))));box-shadow:0 3px 10px #123b634a;translate:clamp(-4px,var(--sway-x),4px) clamp(-3px,var(--sway-y),3px);scale:clamp(.988,var(--stretch),1.018) clamp(.988,calc(2 - var(--stretch)),1.018);animation:drawer-appear .16s ease-out both}
+.floating[data-theme=dark] .drawer-shell{--drawer-top:18,34,62;--drawer-mid:23,67,107;--drawer-end:28,74,118}
+.floating[data-theme=forest] .drawer-shell{--drawer-top:248,250,252;--drawer-mid:217,237,221;--drawer-end:184,223,255}
+.floating[data-theme=ocean] .drawer-shell{--drawer-top:248,253,255;--drawer-mid:204,239,243;--drawer-end:168,223,239}
+@keyframes drawer-appear{from{opacity:0}to{opacity:1}}
+.drawer-header{height:27px;display:flex;align-items:center;justify-content:space-between;padding:6px 12px 0}
+.drawer-header>div{display:flex;gap:1px}
+.drawer-header .live span{color:var(--muted)}
+.drawer-row{display:flex;align-items:center;gap:9px;margin:0 12px;height:100%;min-width:0}
+.expanded .drawer-row{height:75px;gap:10px}
+.drawer-art{position:relative;width:46px;height:46px;border-radius:13px;overflow:hidden;padding:0;flex:none;background:var(--soft);-webkit-app-region:no-drag;border:1px solid rgba(var(--accent-rgb),.39)}
+.expanded .drawer-art{width:57px;height:57px}
+.drawer-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.is-playing .drawer-art{box-shadow:0 0 12px rgba(var(--accent-rgb),.28)}
+.is-playing .drawer-art img{animation:cover-breath 5s ease-in-out infinite}
+@keyframes cover-breath{50%{transform:scale(1.048)}}
+.cover-fade-enter-active,.cover-fade-leave-active{transition:opacity .21s}.cover-fade-enter-from,.cover-fade-leave-to{opacity:0}
+.drawer-info{min-width:0;flex:1}
+.drawer-info b,.drawer-info small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drawer-info b{font-size:13px}.drawer-info small{font-size:11px;color:var(--muted);margin-top:4px}
+.drawer-meter{display:flex;align-items:end;justify-content:center;gap:3px;height:26px;min-width:35px;flex:none}
+.drawer-meter i{height:100%;width:4px;border-radius:3px;background:linear-gradient(to top,var(--blue),var(--growth));transform-origin:bottom;transition:transform 125ms ease-out}
+.drawer-actions{margin-left:auto;display:flex;gap:3px;align-items:center}.drawer-actions .primary{width:34px;height:34px}
+.drawer-bottom{display:flex;align-items:center;gap:8px;margin:4px 13px 0;color:var(--muted);font-size:9px}
+.drawer-timeline{flex:1;-webkit-app-region:no-drag}
+.drawer-volume{margin-left:5px;display:flex;align-items:center;gap:6px;-webkit-app-region:no-drag}
+.drawer-volume input{width:59px}.drawer-volume .glyph{width:13px}
+.pill .drawer-shell{border-radius:999px}.pill .drawer-art{width:36px;height:36px;border-radius:50%}
+.pill .drawer-row{margin:0 10px}
+.floating.video .drawer-shell{--drawer-top:5,12,23;--drawer-mid:5,12,23;--drawer-end:5,12,23}
+@media(prefers-reduced-motion:reduce){.is-playing .drawer-art img{animation:none}}
+/* One painted surface: background, border and controls move together. */
+.chrome,.app.floating .drawer-shell{-webkit-app-region:no-drag;user-select:none}
+.app.is-dragging .drawer-shell{box-shadow:0 4px 13px rgba(var(--accent-rgb),.42);border-color:rgba(var(--accent-rgb),.78)}
+.app button{transition:background .16s,color .16s,transform .16s,box-shadow .16s,scale .28s cubic-bezier(.2,1.55,.45,1)}
+.app[data-motion=full] button:active:not(:disabled){scale:.9}
+.desktop .chrome-brand>*,.desktop .chrome-title{transform:translate3d(calc(var(--sway-x)*.32),calc(var(--sway-y)*.32),0) scale(clamp(.994,var(--stretch),1.006))}

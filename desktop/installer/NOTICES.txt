@@ -1,0 +1,19 @@
+RAKOTO PLAYER — INFORMATIONS D'INSTALLATION
+
+Lecteur multimédia local pour Windows 10 et 11, x64.
+
+RAKOTO Player est actuellement une version en développement. Les fichiers
+multimédias sont ouverts localement. L'application n'inclut ni musique,
+ni films, ni abonnement à un catalogue.
+
+Composants et notices :
+- Electron : licence MIT et notices Chromium dans le dossier de l'application.
+- Vue : licence MIT, resources/app/ui/VUE-LICENSE.txt.
+- MediaInfo : licence BSD-2-Clause, resources/app/node_modules/mediainfo.js/LICENSE.txt.
+- mpv : build GPL, notices et liens des sources exactes dans resources/app/native/README.md.
+- Koffi et music-metadata : notices incluses dans leurs dossiers npm.
+
+Le moteur mpv et ses composants conservent leurs licences respectives.
+Les liens des sources et configurations de compilation sont fournis avec
+le lecteur. Les médias et votre bibliothèque personnelle ne sont pas
+supprimés lors de la désinstallation du programme.

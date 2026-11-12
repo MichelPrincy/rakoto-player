@@ -1,0 +1,185 @@
+<div class="app" :data-theme="s.theme" :data-motion="s.motion" :class="[{desktop: !floating, floating}, s.mode, {'player-home':s.page==='home'&&!immersive,'native-fullscreen':s.mode==='fullscreen' && s.nativePlayback && s.track?.type==='video'}]">
+  <template v-if="floating">
+    <section class="float-card drawer-shell" :style="{'--drawer-alpha':Math.min(1,Math.max(.55,s.opacity))}" :class="{expanded:s.mode==='mini', 'is-playing':s.playing}" @contextmenu.prevent="mediaMenu()" aria-label="Tiroir RAKOTO">
+      <div v-if="s.mode==='mini'" class="drawer-header">
+        <span class="live"><i></i> RAKOTO <span> / TIROIR</span></span>
+        <div>
+          <button class="icon" title="Options média" aria-label="Options média" @click="mediaMenu()"><glyph name="settings"/></button>
+          <button class="icon" title="Réduire le tiroir" aria-label="Réduire le tiroir" @click="setMode('drawer')"><glyph name="minus"/></button>
+          <button class="icon" title="Masquer le tiroir" aria-label="Masquer le tiroir" @click="setMode('hide-drawer')"><glyph name="close"/></button>
+        </div>
+      </div>
+      <div class="drawer-row">
+        <button class="drawer-art" @click="setMode(s.mode==='mini'?'drawer':'mini')" :title="s.track?.title || 'Agrandir le tiroir'" aria-label="Déployer ou réduire le tiroir">
+          <transition name="cover-fade"><img :key="drawerCover" :src="drawerCover" alt=""></transition>
+        </button>
+        <div v-if="s.mode==='mini'" class="drawer-info" :title="[s.track?.title,s.track?.artist].filter(Boolean).join(' — ')">
+          <b>{{ s.track?.title || 'RAKOTO Player' }}</b><small>{{ s.track?.artist || 'En attente de lecture' }}</small>
+        </div>
+        <div v-if="s.drawerMeter && s.mode!=='pill'" class="drawer-meter" aria-label="Niveaux des fréquences audio">
+          <i v-for="(level,index) in meterLevels" :key="index" :style="{transform:'scaleY('+(.13+level*.87)+')'}"></i>
+        </div>
+        <div class="drawer-actions">
+          <button v-if="s.mode!=='pill'" class="icon" title="Précédent" aria-label="Précédent" @click="previous"><glyph name="previous"/></button>
+          <button class="icon primary round" @click="toggle" :aria-label="s.playing?'Pause':'Lire'"><glyph :name="s.playing?'pause':'play'"/></button>
+          <button v-if="s.mode!=='pill'" class="icon" title="Suivant" aria-label="Suivant" @click="next"><glyph name="next"/></button>
+          <button v-if="s.mode!=='mini'" class="icon" title="Déployer le tiroir" aria-label="Déployer le tiroir" @click="setMode('mini')"><glyph name="expand"/></button>
+          <button v-else class="icon" title="Restaurer la fenêtre principale" aria-label="Restaurer la fenêtre principale" @click="setMode('normal')"><glyph name="expand"/></button>
+        </div>
+      </div>
+      <div v-if="s.mode==='mini'" class="drawer-bottom">
+        <span>{{clock(s.time)}}</span>
+        <input class="range drawer-timeline" type="range" min="0" :max="s.duration || 1" step=".1" :value="s.time" :style="progress(s.time,s.duration)" @input="seek(+$event.target.value)" aria-label="Position de lecture">
+        <span>{{clock(s.duration)}}</span>
+        <label class="drawer-volume" title="Volume"><glyph name="volume"/><input class="range" type="range" min="0" max="1" step=".01" :value="s.volume" :style="progress(s.volume,1)" @input="drawerVolume(+$event.target.value)" aria-label="Volume"></label>
+      </div>
+    </section>
+  </template>
+
+  <template v-else>
+    <header class="chrome">
+      <button class="chrome-brand" title="Accueil du lecteur" @click="go('home')"><img src="/logo.svg" alt="Logo RAKOTO"><b>RAKOTO</b><span>PLAYER</span></button>
+      <div class="chrome-title">{{s.track ? s.track.title + (s.track.artist ? " — " + s.track.artist : "") : "Votre musique. Votre cinéma."}}</div>
+      <div class="chrome-actions">
+        <button class="icon" title="Bibliothèque" @click="go(s.page==='home'?'library':'home')"><glyph name="library"/></button>
+        <button class="icon" title="Afficher ou masquer la liste" @click="toggleQueue"><glyph name="queue"/></button>
+        <button class="icon" title="Thème clair ou sombre" @click="theme"><glyph :name="s.theme==='dark'?'sun':'moon'"/></button>
+        <button class="icon" title="Tiroir compact" @click="setMode('drawer')"><glyph name="minus"/></button>
+        <button class="icon" title="Agrandir ou restaurer" @click="setMode('maximize')"><glyph name="square"/></button>
+        <button class="icon quit" title="Fermer RAKOTO" @click="setMode('exit')"><glyph name="close"/></button>
+      </div>
+    </header>
+
+    <aside class="sidebar" v-if="!immersive">
+      <div class="nav-group" v-for="group in navigation" :key="group.name">
+        <div class="nav-title">{{ group.name }}</div>
+        <button v-for="item in group.items" :key="item[0]" :class="{active:s.page===item[0]}" @click="go(item[0])"><glyph :name="item[2]"/><span>{{ item[1] }}</span><i v-if="s.page===item[0]"></i></button>
+      </div>
+      <button class="import-side" @click="openFiles"><glyph name="plus"/> Importer des médias</button>
+    </aside>
+
+    <main class="workspace" :class="{immersive, cinema:s.theater, 'with-queue':s.queueOpen}" @dragover.prevent @drop.prevent="dropFiles">
+      <header v-if="!immersive && s.page!=='home'" class="pagebar">
+        <div><small>VOTRE ESPACE PERSONNEL</small><h1>{{ pageName }}</h1></div>
+        <div class="page-tools">
+          <label class="search"><glyph name="search"/><input v-model="s.query" placeholder="Rechercher un titre, un artiste…" @focus="go('search')"><kbd>Ctrl K</kbd></label>
+          <button class="icon outlined" :title="s.theme==='dark'?'Retour à Betsileo Nature':'Mode Nuit'" @click="theme"><glyph :name="s.theme==='dark'?'sun':'moon'"/></button>
+          <div class="avatar" title="Bibliothèque personnelle">R</div>
+        </div>
+      </header>
+
+      <section v-if="s.page==='home' && !immersive" class="home-player" @contextmenu.prevent="mediaMenu()" @dblclick="s.track && showStage()">
+        <button class="player-album" :class="{'brand-album':!s.track?.cover}" :title="s.track?'Ouvrir la lecture immersive':'Ouvrir des fichiers'" @click="s.track ? showStage() : openFiles()"><img :src="s.track?.cover || '/logo.svg'" alt=""></button>
+        <h2>{{s.track?.title || 'RAKOTO Player'}}</h2><p>{{s.track?.artist || 'Ny hira sy ny sarimihetsika · GASY GASY'}}</p>
+        <div v-if="s.track" class="home-spectrum" aria-label="Niveaux audio"><i v-for="(level,index) in meterLevels" :key="index" :style="{transform:'scaleY('+(.15+level*.85)+')'}"></i></div>
+        <button v-if="!s.track" class="open-local" @click="openFiles"><glyph name="plus"/> Ouvrir mes fichiers</button>
+      </section>
+
+      <section v-else-if="s.page==='eq' && !immersive" class="equalizer">
+        <div class="eq-hero"><div><small>STUDIO AUDIO / DSP</small><h2>Égaliseur</h2><p>Façonnez la couleur de votre écoute, fréquence par fréquence.</p></div><button class="primary" @click="s.eqOn=!s.eqOn"><glyph name="wave"/> {{ s.eqOn ? 'Activé' : 'Désactivé' }}</button></div>
+        <div class="eq-panel"><div class="section-head"><div><small>10 BANDES PARAMÉTRÉES</small><h2>Réponse fréquentielle</h2></div><select v-model="s.preset" @change="choosePreset" aria-label="Préréglage"><option v-for="name in Object.keys(presets)" :key="name">{{ name }}</option><option>Personnalisé</option></select></div>
+          <div class="eq-curve"><svg viewBox="0 0 900 140" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="curve" x2="0%" y2="100%"><stop stop-color="#3B82F6" stop-opacity=".3"/><stop offset="1" stop-color="#3B82F6" stop-opacity="0"/></linearGradient></defs><path :d="curve+' L 900 140 L 0 140 Z'" fill="url(#curve)"/><path :d="curve" fill="none" stroke="#3B82F6" stroke-width="3" vector-effect="non-scaling-stroke"/></svg></div>
+          <div class="bands"><label v-for="(hz,i) in frequencies" :key="hz"><span>{{ s.bands[i] > 0 ? '+' : '' }}{{s.bands[i]}} dB</span><input type="range" min="-12" max="12" step="1" :value="s.bands[i]" @input="s.bands[i]=+$event.target.value;s.preset='Personnalisé'" :aria-label="hz + ' hertz'"><b>{{ hz < 1000 ? hz : (hz/1000)+'k' }}</b></label></div>
+        </div>
+        <div class="eq-options"><label><b>Bass Boost</b><small>Renfort des fréquences graves</small><input class="range" type="range" min="0" max="10" step="1" v-model.number="s.bass" :style="progress(s.bass,10)"><span>{{s.bass}} dB</span></label><label><b>Fondu enchaîné</b><small>Transition entre deux pistes audio</small><input class="range" type="range" min="0" max="10" step="1" v-model.number="s.fade" :style="progress(s.fade,10)"><span>{{s.fade}} s</span></label></div>
+      </section>
+
+      <section v-else-if="s.page==='settings' && !immersive" class="settings-page">
+        <div class="settings-card"><h2>Apparence et fenêtres</h2><label>Thème <select v-model="s.theme"><option v-for="(name,id) in themes" :key="id" :value="id">{{ name }}</option></select></label>
+        <label>Animations <select v-model="s.motion"><option value="full">Organiques</option><option value="reduced">Discrètes</option><option value="off">Désactivées</option></select></label>
+        <label class="setting-toggle">Garder le tiroir au premier plan <input type="checkbox" v-model="s.drawerPinned"></label>
+        <label class="setting-toggle">Visualiseur audio du tiroir <input type="checkbox" v-model="s.drawerMeter"></label>
+        <label>Opacité du lecteur flottant <input class="range" type="range" min=".55" max="1" step=".05" v-model.number="s.opacity"><span>{{Math.round(s.opacity*100)}} %</span></label>
+        <div class="setting-actions"><button class="primary" @click="setMode('mini')">Mini-lecteur</button><button @click="setMode('pill')">Micro-lecteur</button></div></div>
+        <div class="settings-card"><h2>Lecture</h2><label>Vitesse <select v-model.number="s.speed"><option v-for="rate in rates" :key="rate" :value="rate">{{rate}}×</option></select></label><p>Espace pour lire ou mettre en pause. Les flèches déplacent la lecture de cinq secondes. F bascule le plein écran et Ctrl+M ouvre le mini-lecteur.</p></div>
+      </section>
+
+      <section v-else-if="!immersive" class="library">
+        <div class="section-head"><div><small>BIBLIOTHÈQUE LOCALE</small><h2>{{ pageName }}</h2></div><button v-if="s.page==='playlists'" @click="s.createList=!s.createList"><glyph name="plus"/> Nouvelle playlist</button><button v-else @click="openFiles"><glyph name="plus"/> Importer</button></div>
+        <template v-if="s.page==='playlists'">
+          <form v-if="s.createList" class="playlist-form" @submit.prevent="createPlaylist"><input v-model="s.listName" placeholder="Nom de la playlist" maxlength="70" aria-label="Nom de la playlist"><button class="primary">Créer</button></form>
+          <div class="playlists"><button v-for="list in s.playlists" :key="list.id" :class="{active:list.id===s.list}" @click="s.list=list.id"><glyph name="playlist"/> {{list.name}} <small>{{list.ids.length}}</small></button></div>
+          <div v-if="s.list" class="list-actions"><button @click="s.listEdit=!s.listEdit"><glyph name="plus"/> Ajouter des médias</button><button @click="deletePlaylist"><glyph name="trash"/> Supprimer la playlist</button></div>
+          <div v-if="s.listEdit && s.list" class="playlist-picker"><label v-for="item in s.items" :key="item.id"><input type="checkbox" :checked="selectedList?.ids.includes(item.id)" @change="editPlaylist(item.id,$event.target.checked)"> {{item.title}}</label></div>
+        </template>
+        <div v-if="visibleItems.length" class="library-list">
+          <div class="library-row" v-for="(item,index) in visibleItems" :key="item.id" :class="{active:s.track?.id===item.id}">
+            <button class="library-track" @click="playFrom(item,visibleItems)"><span>{{index+1}}</span><img :src="cover(item)" alt=""><div><b>{{item.title}}</b><small>{{item.artist}}</small></div></button>
+            <span class="media-type">{{ item.type==='video'?'VIDÉO':item.type==='podcast'?'PODCAST':item.ext }}</span>
+            <button class="icon" :class="{blue:s.favorites.includes(item.id)}" title="Favori" @click="favorite(item)"><glyph name="heart"/></button><button class="icon" title="Ajouter à la file" @click="enqueue(item)"><glyph name="plus"/></button>
+          </div>
+        </div>
+        <div v-else class="empty"><glyph :name="s.page==='search'?'search':'library'"/><h3>{{s.page==='search'?'Aucun résultat':'Rien à afficher ici'}}</h3><p>{{s.page==='search'?'Recherchez par titre, artiste, album ou genre.':'Importez vos fichiers pour enrichir votre collection.'}}</p></div>
+      </section>
+
+      <section v-show="immersive" class="immersive-stage" @contextmenu.prevent="mediaMenu()" @dblclick.self="full" :class="{'video-active':s.track?.type==='video'}" :style="artStyle(s.track)">
+        <div class="stage-heading"><button @click="leaveStage"><glyph name="back"/> Bibliothèque</button><span><i></i> {{s.track?.type==='video'?'MODE CINÉMA':'LECTURE IMMERSIVE'}}</span><button @click="full"><glyph name="expand"/> Plein écran</button></div>
+        <div v-if="s.track?.type!=='video'" class="immersive-music"><img :src="cover(s.track)" alt=""><div><div class="eyebrow">EN COURS DE LECTURE</div><h2>{{s.track?.title || 'RAKOTO Player'}}</h2><p>{{s.track?.artist || 'Votre musique, votre espace'}}</p><div class="bars" aria-label="Visualisation audio"><i v-for="(bar,index) in s.bars" :key="index" :style="{height:bar+'%'}"></i></div><div v-if="s.caption" class="lyric-line">{{s.caption}}</div></div></div>
+        <div v-if="s.track?.type==='video' && s.caption" class="video-caption">{{s.caption}}</div>
+        <div class="stage-buttons">
+          <button v-if="s.track?.type==='video'" @click="setMode('video')"><glyph name="mini"/> Vidéo flottante</button>
+          <button v-if="s.track?.type==='video'" @click="pip"><glyph name="mini"/> Image dans l’image</button>
+          <button v-if="s.track?.type==='video'" @click="s.theater=!s.theater"><glyph name="video"/> Mode cinéma</button>
+          <button v-if="s.track?.type==='video'" @click="loadCaption('srt',true)"><glyph name="caption"/> Sous-titres</button>
+          <select v-if="variants.length>1" :value="s.track.id" @change="selectVariant($event.target.value)" aria-label="Résolution"><option v-for="item in variants" :key="item.id" :value="item.id">{{variantLabel(item)}}</option></select>
+          <span v-else-if="s.resolution" class="video-quality">{{s.resolution}}</span>
+          <select v-if="s.track?.type==='video'" v-model.number="s.speed" aria-label="Vitesse vidéo"><option v-for="rate in rates" :key="rate" :value="rate">{{rate}}×</option></select>
+        </div>
+        <div id="video-decks"></div>
+      </section>
+    </main>
+
+    <aside v-if="s.queueOpen && !immersive" class="queue">
+      <template v-if="s.page==='home'">
+        <div class="panel-tabs"><button :class="{active:s.panelKind==='music'}" @click="s.panelKind='music'">Musique</button><button :class="{active:s.panelKind==='video'}" @click="s.panelKind='video'">Vidéos</button><button :class="{active:s.panelKind==='queue'}" @click="s.panelKind='queue'">À suivre</button></div>
+        <input class="panel-search" type="search" v-model="s.panelQuery" placeholder="Rechercher…" aria-label="Rechercher dans la bibliothèque">
+        <div class="compact-library"><button class="compact-track" v-for="item in homeItems" :key="item.id" :class="{active:s.track?.id===item.id}" @click="playFrom(item,homeItems)"><img :src="cover(item)" alt=""><span><b>{{item.title}}</b><small>{{item.artist}}</small></span><em>{{item.duration>0?clock(item.duration):item.ext}}</em></button><p v-if="!homeItems.length" class="panel-empty">{{s.panelQuery?'Aucun résultat.':'Importez vos fichiers pour les retrouver ici.'}}</p></div>
+        <div class="panel-foot"><span>{{homeItems.length}} élément{{homeItems.length>1?'s':''}}</span><button @click="openFiles">Importer</button></div>
+      </template>
+      <template v-else>
+      <header class="queue-heading"><div><small>ESPACE LECTURE</small><h2>File d’attente</h2></div><button class="icon" title="Masquer la file" @click="s.queueOpen=false"><glyph name="close"/></button></header>
+      <div v-if="s.track" class="queue-now"><img :src="cover(s.track)" alt=""><div><small><i></i> EN COURS</small><b>{{ s.track.title }}</b><span>{{ s.track.artist }}</span></div></div>
+      <h3>{{s.lyrics?'Paroles':'À suivre'}} <span>{{ s.lyrics ? 'LRC' : s.queue.length }}</span></h3>
+      <div v-if="s.lyrics" class="lyrics-pane"><p>{{ s.caption || 'Aucune ligne synchronisée à cet instant.' }}</p><button @click="loadCaption('lrc',true)">Charger un fichier LRC</button></div>
+      <div v-else class="queue-items">
+        <div v-for="(id,index) in s.queue" :key="id" class="queue-item" :class="{current:s.track?.id===id}" draggable="true" @dragstart="s.drag=index" @dragend="s.drag=-1" @dragover.prevent @drop.prevent.stop="moveQueue(index)">
+          <glyph name="grip"/><button @click="playId(id)"><img :src="cover(byId(id))" alt=""><span><b>{{byId(id)?.title}}</b><small>{{byId(id)?.artist}}</small></span></button><button class="icon remove" title="Retirer de la file" @click="s.queue.splice(index,1)"><glyph name="close"/></button>
+        </div>
+        <p v-if="!s.queue.length">Choisissez un média ou ajoutez-le à la file.</p>
+      </div>
+      <button class="queue-add" @click="openFiles"><glyph name="plus"/> Ajouter des fichiers</button>
+      </template>
+    </aside>
+
+    <footer class="player">
+      <div class="now">
+        <button class="cover-button" :disabled="!s.track" title="Afficher la lecture immersive" @click="showStage"><img :src="cover(s.track)" alt=""></button>
+        <div class="now-text"><b>{{s.track?.title || 'Aucune lecture'}}</b><small>{{s.track?.artist || 'Ouvrez un fichier local'}}</small></div>
+        <button class="icon" :disabled="!s.track" :class="{blue:s.favorites.includes(s.track?.id)}" @click="favorite(s.track)" title="Favori"><glyph name="heart"/></button>
+      </div>
+      <div class="transport">
+        <div class="transport-buttons"><button class="icon" :class="{blue:s.shuffle}" title="Lecture aléatoire" @click="s.shuffle=!s.shuffle"><glyph name="shuffle"/></button>
+          <button class="icon" @click="previous" title="Précédent"><glyph name="previous"/></button>
+          <button class="icon primary round play" @click="toggle" :aria-label="s.playing?'Pause':'Lire'"><glyph :name="s.playing?'pause':'play'"/></button>
+          <button class="icon" @click="next" title="Suivant"><glyph name="next"/></button>
+          <button class="icon repeat" :class="{blue:s.repeat!=='off'}" :title="'Répétition : '+repeatLabel" @click="repeat"><glyph name="repeat"/><sup v-if="s.repeat==='one'">1</sup></button></div>
+        <div class="timeline"><span>{{clock(s.time)}}</span><input class="range" type="range" min="0" :max="s.duration || 1" step=".1" :value="s.time" :style="progress(s.time,s.duration)" @input="seek(+$event.target.value)" aria-label="Position"><span>{{clock(s.duration)}}</span></div>
+      </div>
+      <div class="player-tools">
+        <button class="icon" :class="{blue:s.lyrics}" title="Paroles" @click="toggleLyrics"><glyph name="mic"/></button>
+        <button class="icon" :class="{blue:s.queueOpen}" title="File d’attente" @click="toggleQueue"><glyph name="queue"/></button>
+        <button class="icon" :disabled="!s.track" title="Options média" @click="mediaMenu()"><glyph name="settings"/></button>
+        <button class="icon" title="Mini-lecteur (Ctrl+M)" @click="setMode('mini')"><glyph name="mini"/></button>
+        <button class="icon" title="Plein écran" @click="full"><glyph name="expand"/></button>
+        <button class="icon sound" @click="s.muted=!s.muted" :title="s.muted?'Rétablir le son':'Couper le son'"><glyph :name="s.muted?'mute':'volume'"/></button>
+        <input class="range volume" type="range" min="0" max="1" step=".01" v-model.number="s.volume" :style="progress(s.muted?0:s.volume,1)" aria-label="Volume">
+      </div>
+    </footer>
+    <transition name="toast"><div v-if="s.notice" class="notice" role="status"><glyph name="info"/> {{s.notice}}</div></transition>
+  </template>
+</div>
+
+
+
+
+

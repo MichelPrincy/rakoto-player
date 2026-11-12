@@ -1,0 +1,44 @@
+*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;font:14px "Segoe UI",sans-serif}
+button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid #60a5fa;outline-offset:3px}
+.overlay{overflow:hidden;color:#eaf3ff;background:transparent}#surface{height:100%;position:relative;background:#00000002}
+.glass{position:absolute;left:50%;bottom:21px;width:min(860px,calc(100% - 40px));padding:11px 14px 9px;border-radius:16px;
+  background:#101e38c9;border:1px solid #7caaff5c;box-shadow:0 8px 35px #0008;backdrop-filter:blur(15px);
+  transform:translateX(-50%);transition:opacity .2s,transform .2s}
+.progress-row,.button-row,.left,.right,.volume{display:flex;align-items:center;gap:8px}
+.progress-row span{min-width:36px;color:#d2e2fa;font-size:11px}.progress-row span:last-child{text-align:right}
+.button-row{justify-content:space-between;margin-top:6px}.right,.left{gap:5px}
+.glass button,.stage-action{border:1px solid #8cbaff38;background:#1a315466;color:#f3f7ff;border-radius:8px;
+  min-height:29px;min-width:29px;padding:3px 8px;font-size:12px;transition:background .15s,transform .15s}
+.glass button:hover,.stage-action:hover{background:#3262ac;transform:translateY(-1px)}.glass button.play{background:#2563eb;font-size:14px;border-radius:50%;width:35px;height:35px}
+.right button{white-space:nowrap;max-width:100px;overflow:hidden;text-overflow:ellipsis}.volume input{width:65px}.volume span{color:#9bc4ff}
+input[type=range]{appearance:none;min-width:0;height:4px;margin:0;border-radius:12px;background:linear-gradient(90deg,#3b82f6 var(--progress,0%),#87a5d560 var(--progress,0%));cursor:pointer}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:12px;height:12px;background:#fff;border:2px solid #3b82f6;border-radius:50%;box-shadow:0 0 9px #3b82f699}
+#timeline{flex:1;min-width:0;position:relative;display:flex;align-items:center;height:14px}#seek{width:100%}
+#hover-time{position:absolute;bottom:20px;transform:translateX(-50%);background:#0f172a;color:#eaf3ff;border:1px solid #5978ab;padding:3px 6px;border-radius:5px;font-size:10px;pointer-events:none}
+#marks{position:absolute;top:11px;left:5px;right:5px;height:4px;pointer-events:none}
+#marks .chapter{pointer-events:auto;position:absolute;transform:translateX(-50%);width:4px;height:5px;min-width:0;min-height:0;padding:0;border:0;background:#bfdbfe;border-radius:2px}
+.stage-action{position:absolute;left:12px;top:12px;background:#0f172ac9}.fullscreen .stage-action,.compact .stage-action{display:none}
+.fullscreen:not(.active) .glass{opacity:0;transform:translate(-50%,12px);pointer-events:none;visibility:hidden;transition:opacity .2s,transform .2s,visibility 0s .2s}
+.fullscreen:not(.active),.fullscreen:not(.active) *{cursor:none!important}
+.compact .glass{bottom:7px;width:calc(100% - 12px);padding:6px 7px;border-radius:10px}
+.compact .right,.compact .left{gap:3px}.compact .glass button{min-width:25px;padding:2px 4px;font-size:10px}.compact .glass button.play{width:27px;height:27px}
+.compact .volume{display:none}.compact .button-row{margin-top:4px}
+@media(max-width:450px){.right .volume{display:none}.glass{padding:6px;width:calc(100% - 14px);bottom:8px}.button-row{gap:3px}.right,.left{gap:3px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+.dialog{background:#f8fafc;color:#0f172a;padding:18px;overflow:auto}.dialog.dark{background:#0f172a;color:#eaf3ff}
+.dialog h1{font-size:23px;margin:0 0 7px}.dialog p{margin:4px 0 13px;color:#64748b;overflow-wrap:anywhere}.dialog.dark p{color:#adc5e6}
+.dialog dl{display:grid;grid-template-columns:142px 1fr;gap:7px 11px;margin:0;padding:12px;background:#eff6ff;border-radius:10px}.dialog.dark dl{background:#142039}
+.dialog dt{font-weight:650}.dialog dd{margin:0;overflow-wrap:anywhere}.dialog h2{font-size:16px;margin:15px 0 6px}.dialog ul{padding-left:19px;margin-top:4px}
+.dialog li{padding:3px 0}.dialog form{display:flex;align-items:end;gap:8px}.dialog label{display:grid;gap:5px}.dialog input{width:130px;border:1px solid #94a3b8;border-radius:7px;padding:6px}.dialog button{padding:7px 10px;background:#2563eb;color:white;border:0;border-radius:8px}
+
+/* Desktop Lamba: native playback overlays keep their existing behavior. */
+button:focus-visible,input:focus-visible{outline-color:#E3B04B}
+.overlay{color:#F3E7D3}.glass{background:#2A1F19D9;border-color:#B9A48F66;box-shadow:0 8px 35px #120C0970}
+.progress-row span{color:#DCC8AD}.glass button,.stage-action{background:#3A2C2380;border-color:#B9A48F44;color:#F3E7D3}
+.glass button:hover,.stage-action:hover{background:#76412E}.glass button.play{background:#B5442E}.volume span{color:#E3B04B}
+input[type=range]{background:linear-gradient(90deg,#D9644A var(--progress,0%),#B9A48F60 var(--progress,0%))}
+input[type=range]::-webkit-slider-thumb{border-color:#D9644A;box-shadow:0 0 7px #B5442E66}
+#hover-time{background:#1C1410;color:#F3E7D3;border-color:#8A6F5E}#marks .chapter{background:#E3B04B}.stage-action{background:#2A1F19D9}
+.dialog{background:#F6EEDC;color:#3B2418}.dialog.dark{background:#1C1410;color:#F3E7D3}.dialog p{color:#8A6F5E}.dialog.dark p{color:#B9A48F}
+.dialog dl{background:#FFFAF0;border:1px solid #E6D8BC}.dialog.dark dl{background:#2A1F19;border-color:#3A2C23}
+.dialog input{border-color:#E6D8BC;background:#FFFAF0;color:#3B2418}.dialog.dark input{background:#2A1F19;color:#F3E7D3;border-color:#3A2C23}.dialog button{background:#B5442E}

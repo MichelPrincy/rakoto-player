@@ -1,0 +1,27 @@
+{
+  "name": "rakoto-player",
+  "productName": "RAKOTO Player",
+  "version": "2.2.4",
+  "private": true,
+  "description": "Lecteur multimédia local avec mini-lecteurs flottants pour Windows",
+  "main": "main.cjs",
+  "scripts": {
+    "prepare": "node tools/compile.cjs",
+    "start": "electron .",
+    "demo": "electron . --demo",
+    "verify": "electron . --verify",
+    "package": "node tools/package.cjs",
+    "package:installers": "node tools/build-installers.cjs",
+    "verify:advanced": "electron . --verify-advanced",
+    "verify:native": "node tools/verify-native.cjs"
+  },
+  "dependencies": {
+    "koffi": "3.3.7",
+    "mediainfo.js": "0.3.8",
+    "music-metadata": "^11.0.0",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "electron": "45.2.3"
+  }
+}

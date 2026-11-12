@@ -1,0 +1,6 @@
+node_modules/
+dist/
+installer/work/
+ui/generated.js
+ui/vue.js
+native/*.exe
