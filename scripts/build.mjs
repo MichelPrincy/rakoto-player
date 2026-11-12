@@ -20,6 +20,7 @@ if(manifest.android){
     !/^[a-f0-9]{64}$/i.test(item.sha256)||new URL(item.url).protocol!=='https:'||
     !new URL(item.url).pathname.endsWith('/'+item.file)||item.minAndroid!=='6.0'||
     JSON.stringify(item.abis)!==JSON.stringify(['arm64-v8a','armeabi-v7a']))throw new Error('Métadonnées Android invalides.');
+  if(item.fallbackUrl&&(new URL(item.fallbackUrl).protocol!=='https:'||!new URL(item.fallbackUrl).pathname.endsWith('/'+item.file)))throw new Error('Lien Android de secours invalide.');
 }
 const downloadOrigin=new URL(manifest.offline.url).origin;
 let html=await readFile(path.join(root,'src/index.html'),'utf8');

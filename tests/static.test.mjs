@@ -20,6 +20,8 @@ test('toutes les ressources fonctionnent à la racine et sous /rakoto-player/',a
 });
 test('le client compilé active les téléchargements avec les vraies URL et tailles',async()=>{
  const nodes=new Map();
+ nodes.set('[data-android-fallback]',[{href:'',attributes:{'aria-disabled':'true'},removeAttribute(name){delete this.attributes[name]},setAttribute(name,value){this.attributes[name]=value}}]);
+ nodes.set('[data-android-file-size]',[{textContent:''}]);nodes.set('[data-android-binary-size]',[{textContent:''}]);
  for(const type of ['offline','online','android']){
   nodes.set(`[data-download="${type}"]`,[{href:'',attributes:{'aria-disabled':'true'},removeAttribute(name){delete this.attributes[name]},setAttribute(name,value){this.attributes[name]=value},addEventListener(){}}]);
   nodes.set(`[data-size="${type}"]`,[{textContent:''}]);
@@ -35,6 +37,10 @@ test('le client compilé active les téléchargements avec les vraies URL et tai
   assert.equal(link.attributes['aria-disabled'],undefined);
   assert.match(nodes.get(`[data-size="${type}"]`)[0].textContent,/(Mo|Ko)/);
  }
+ assert.equal(nodes.get('[data-android-fallback]')[0].href,manifest.android.fallbackUrl);
+ assert.equal(nodes.get('[data-android-fallback]')[0].attributes['aria-disabled'],undefined);
+ assert.equal(nodes.get('[data-android-file-size]')[0].textContent.replace(/\D/g,''),String(manifest.android.bytes));
+ assert.match(nodes.get('[data-android-binary-size]')[0].textContent,/Mio/);
 });
 
 test('une URL Android invalide reste désactivée sans bloquer Windows',async()=>{

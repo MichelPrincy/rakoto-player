@@ -1,5 +1,5 @@
 interface Artifact {file:string;bytes:number;sha256:string;url:string}
-interface AndroidArtifact extends Artifact {version:string;minAndroid:string;abis:string[]}
+interface AndroidArtifact extends Artifact {version:string;minAndroid:string;abis:string[];fallbackUrl?:string}
 interface Release {version:string;platform:string;offline:Artifact;online:Artifact;android?:AndroidArtifact}
 const size=(bytes:number)=>bytes<1_000_000?new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0}).format(bytes/1000)+' Ko':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:1}).format(bytes/1_000_000)+' Mo';
 function isArtifact(value:Artifact,android=false):boolean{
@@ -24,6 +24,11 @@ async function release(){
     const android=info.android;
     if(android&&isArtifact(android,true)&&/^\d+\.\d+\.\d+-beta\.\d+$/.test(android.version)){
       activateDownload('android',android);
+      document.querySelectorAll<HTMLElement>('[data-android-file-size]').forEach(el=>el.textContent=new Intl.NumberFormat('fr-FR').format(android.bytes)+' octets');
+      document.querySelectorAll<HTMLElement>('[data-android-binary-size]').forEach(el=>el.textContent=new Intl.NumberFormat('fr-FR',{maximumFractionDigits:1}).format(android.bytes/1048576)+' Mio');
+      if(android.fallbackUrl&&isArtifact({...android,url:android.fallbackUrl},true)){
+        document.querySelectorAll<HTMLAnchorElement>('[data-android-fallback]').forEach(link=>{link.href=android.fallbackUrl!;link.removeAttribute('aria-disabled');link.setAttribute('download',android.file)});
+      }
       document.querySelectorAll<HTMLElement>('[data-android-status]').forEach(el=>el.textContent='Android '+android.minAndroid+' et plus · ARM 32 / 64 bits · '+android.version);
     }else{
       document.querySelectorAll<HTMLElement>('[data-size="android"]').forEach(el=>el.textContent='Indisponible');
